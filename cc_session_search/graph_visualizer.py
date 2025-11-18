@@ -97,10 +97,10 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'user': 50,
         'assistant_text': 150,
         'assistant_thinking': 150,
-        'assistant_tool_call': 150,
-        'assistant_mcp_call': 250,
-        'tool': 350,
-        'file-history-snapshot': 450
+        'assistant_tool_call': 250,
+        'assistant_mcp_call': 350,
+        'tool': 450,
+        'file-history-snapshot': 550
     }
 
     # Position nodes chronologically (top to bottom)
@@ -269,7 +269,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
             fixedrange=False,
             tickmode='array',
             tickvals=list(set(x_positions.values())),
-            ticktext=['User', 'Assistant', 'MCP', 'Tool', 'File'],
+            ticktext=['User', 'Assistant', 'Tool Call', 'MCP', 'Tool', 'File'],
             range=[-20, max(x_positions.values()) + 100]
         ),
         yaxis=dict(
