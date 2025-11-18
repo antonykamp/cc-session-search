@@ -1,9 +1,10 @@
 # Claude Code Session Search
 
-A tool for searching and analyzing Claude Code conversation history. Available as both an MCP server and a CLI tool.
+A comprehensive tool for searching and analyzing Claude Code conversation history. Available as an MCP server, CLI tool, and interactive Streamlit dashboard.
 
 ## Features
 
+### Core Capabilities
 - **List Projects**: View all Claude Code projects with session counts
 - **List Sessions**: Browse sessions for specific projects
 - **List Recent Sessions**: Find recent conversations across all projects
@@ -11,6 +12,15 @@ A tool for searching and analyzing Claude Code conversation history. Available a
 - **Search Conversations**: Search for specific terms with context windows and time ranges
 - **Get Message Details**: Retrieve full content for specific messages
 - **Summarize Conversations**: AI-powered summarization of daily conversations
+
+### Interactive Dashboard
+- **Visual Session Browser**: Interactive Streamlit dashboard for exploring sessions
+- **Conversation Flow Graphs**: Sequence diagram visualizations with color-coded message types
+- **Tool Usage Analysis**: Track and compare tool calls across sessions
+- **Side-by-Side Comparison**: Compare two sessions with tool usage charts
+- **Advanced Filtering**: Filter messages by type (user, assistant, thinking, tool calls, MCP calls)
+- **Shareable Links**: Generate URLs to share specific sessions or comparisons
+- **Full Tool Results**: View complete tool outputs including MCP server responses
 
 ## Installation
 
@@ -20,6 +30,31 @@ uv sync
 ```
 
 ## Usage
+
+### Streamlit Dashboard
+
+Launch the interactive dashboard:
+
+```bash
+uv run streamlit run cc_session_search/dashboard.py
+```
+
+The dashboard will open in your browser at `http://localhost:8501`.
+
+**Features:**
+- **Single Session View**: Explore individual sessions with detailed message browsers, tool usage stats, and visualizations
+- **Compare Mode**: Side-by-side comparison of two sessions with tool usage analysis
+- **Message Filtering**: Filter by message type (user, assistant text, thinking, tool calls, MCP calls, tool results)
+- **Conversation Flow Graph**: Interactive sequence diagram showing message flow and tool call connections
+- **Shareable Links**: Copy URL parameters to share sessions with others
+- **Full Tool Results**: Expand any tool result to see complete output (including MCP responses)
+
+**Shareable Links:**
+The dashboard supports URL parameters for direct linking:
+- Single session: `?project1=PROJECT&session1=SESSION_ID`
+- Comparison: `?project1=PROJECT1&session1=SESSION1&project2=PROJECT2&session2=SESSION2`
+
+See [DASHBOARD_FEATURES.md](DASHBOARD_FEATURES.md) for detailed documentation.
 
 ### CLI Tool
 

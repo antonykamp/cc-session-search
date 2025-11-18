@@ -5,6 +5,9 @@ description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
     "mcp>=1.2.0",
+    "streamlit>=1.28.0",
+    "plotly>=5.17.0",
+    "pandas>=2.1.0",
 ]
 
 [project.scripts]
