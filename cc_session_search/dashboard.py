@@ -160,7 +160,7 @@ def render_session_selector(key_suffix: str) -> Optional[Tuple[str, str]]:
         return None
 
     session_display = [
-        f"{s['session_id'][:20]}... ({s['message_count']} msgs, {s['started_at'][:10] if s['started_at'] else 'unknown'})"
+        f"{s['started_at'][:10] if s['started_at'] else 'unknown'} ({s['message_count']} msgs) - {s['session_id'][:20]}..."
         for s in sessions
     ]
 
