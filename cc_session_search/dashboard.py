@@ -508,9 +508,13 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
                 # Display tool result details
                 if msg.role == 'tool':
                     with st.expander("📦 Tool Result Details", expanded=False):
-                        # Show full content
                         st.markdown("**Full Tool Result:**")
-                        st.code(msg.content, language='text')
+                        # Try to parse content as JSON
+                        try:
+                            parsed_json = json.loads(msg.content)
+                            st.json(parsed_json)
+                        except Exception:
+                            st.code(msg.content, language='text')
 
                         # Show metadata if available
                         if msg.tool_uses:
