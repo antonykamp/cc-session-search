@@ -4,11 +4,10 @@ Conversation summarization using headless Claude
 import json
 import subprocess
 import tempfile
-from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 
-from core.models import ConversationSummary
-from core.searcher import SessionSearcher
+from cc_session_search.core.models import ConversationSummary
+from cc_session_search.core.searcher import SessionSearcher
 
 
 class ConversationSummarizer:

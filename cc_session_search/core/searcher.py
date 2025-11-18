@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from core.models import Message
 
 
 class SessionSearcher:
@@ -14,7 +13,7 @@ class SessionSearcher:
 
     def __init__(self):
         # Use local conversation parser
-        from core.conversation_parser import JSONLParser
+        from cc_session_search.core.conversation_parser import JSONLParser
         self.parser = JSONLParser()
 
         self.claude_dir = Path.home() / '.claude' / 'projects'
