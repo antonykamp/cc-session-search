@@ -1,0 +1,149 @@
+"""
+Comparison view component for side-by-side session analysis
+"""
+
+import streamlit as st
+import urllib.parse
+from typing import List
+
+from cc_session_search.core.conversation_parser import ParsedMessage, ConversationMetadata
+from cc_session_search.dashboard_utils import (
+    extract_system_messages,
+    get_tool_usage_stats
+)
+from cc_session_search.graph_visualizer import create_comparison_chart
+
+
+def render_shareable_link(metadata1: ConversationMetadata, metadata2: ConversationMetadata):
+    """Render shareable link for comparison"""
+    with st.expander("📎 Share This Comparison", expanded=False):
+        params = {
+            'project1': metadata1.project_name,
+            'session1': metadata1.session_id,
+            'project2': metadata2.project_name,
+            'session2': metadata2.session_id
+        }
+        query_string = urllib.parse.urlencode(params)
+        shareable_link = f"?{query_string}"
+
+        st.code(shareable_link, language=None)
+        st.caption("📋 Copy and append to your dashboard URL to share this comparison")
+
+
+def render_stats_comparison(messages1: List[ParsedMessage], messages2: List[ParsedMessage]):
+    """Render high-level statistics comparison"""
+    col1, col2, col3 = st.columns(3)
+
+    tool_stats1 = get_tool_usage_stats(messages1)
+    tool_stats2 = get_tool_usage_stats(messages2)
+
+    with col1:
+        st.metric("Session 1 Messages", len(messages1))
+        st.metric("Session 2 Messages", len(messages2))
+
+    with col2:
+        st.metric("Session 1 Tool Calls", tool_stats1['total_calls'])
+        st.metric("Session 2 Tool Calls", tool_stats2['total_calls'])
+
+    with col3:
+        st.metric("Session 1 Unique Tools", tool_stats1['unique_tools'])
+        st.metric("Session 2 Unique Tools", tool_stats2['unique_tools'])
+
+    return tool_stats1, tool_stats2
+
+
+def render_tool_usage_comparison(tool_stats1: dict, tool_stats2: dict, messages1: List[ParsedMessage], messages2: List[ParsedMessage]):
+    """Render tool usage comparison table and chart"""
+    st.subheader("🔧 Tool Usage Comparison")
+
+    # Combine tool names from both sessions
+    all_tools = set(tool_stats1['tool_counts'].keys()) | set(tool_stats2['tool_counts'].keys())
+
+    comparison_data = []
+    for tool in sorted(all_tools):
+        count1 = tool_stats1['tool_counts'].get(tool, 0)
+        count2 = tool_stats2['tool_counts'].get(tool, 0)
+        diff = count2 - count1
+
+        comparison_data.append({
+            'Tool': tool,
+            'Session 1': count1,
+            'Session 2': count2,
+            'Difference': diff,
+            'Status': '🟢 More' if diff > 0 else ('🔴 Less' if diff < 0 else '⚪ Same')
+        })
+
+    st.dataframe(comparison_data, use_container_width=True, hide_index=True)
+
+    # Visualization
+    fig = create_comparison_chart(messages1, messages2)
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_tool_sequence_comparison(tool_stats1: dict, tool_stats2: dict):
+    """Render tool call sequences comparison"""
+    st.subheader("📊 Tool Call Sequences")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("**Session 1 Sequence:**")
+        if tool_stats1['tool_sequence']:
+            sequence_display = " → ".join(tool_stats1['tool_sequence'][:30])
+            if len(tool_stats1['tool_sequence']) > 30:
+                sequence_display += " → ..."
+            st.code(sequence_display, language=None)
+        else:
+            st.info("No tool calls")
+
+    with col2:
+        st.write("**Session 2 Sequence:**")
+        if tool_stats2['tool_sequence']:
+            sequence_display = " → ".join(tool_stats2['tool_sequence'][:30])
+            if len(tool_stats2['tool_sequence']) > 30:
+                sequence_display += " → ..."
+            st.code(sequence_display, language=None)
+        else:
+            st.info("No tool calls")
+
+
+def render_system_messages_comparison(messages1: List[ParsedMessage], messages2: List[ParsedMessage]):
+    """Render system messages comparison"""
+    st.subheader("⚙️ System Messages Comparison")
+
+    system_msgs1 = extract_system_messages(messages1)
+    system_msgs2 = extract_system_messages(messages2)
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write(f"**Session 1:** {len(system_msgs1)} system messages")
+        for msg in system_msgs1[:5]:
+            st.text(f"[{msg['message_index']}] {msg['content'][:100]}...")
+        if len(system_msgs1) > 5:
+            st.info(f"+ {len(system_msgs1) - 5} more messages")
+
+    with col2:
+        st.write(f"**Session 2:** {len(system_msgs2)} system messages")
+        for msg in system_msgs2[:5]:
+            st.text(f"[{msg['message_index']}] {msg['content'][:100]}...")
+        if len(system_msgs2) > 5:
+            st.info(f"+ {len(system_msgs2) - 5} more messages")
+
+
+def render_comparison_view(
+    metadata1: ConversationMetadata, messages1: List[ParsedMessage],
+    metadata2: ConversationMetadata, messages2: List[ParsedMessage]
+):
+    """Main function to render complete comparison view"""
+    st.header("🔄 Conversation Comparison")
+
+    render_shareable_link(metadata1, metadata2)
+    
+    tool_stats1, tool_stats2 = render_stats_comparison(messages1, messages2)
+    
+    render_tool_usage_comparison(tool_stats1, tool_stats2, messages1, messages2)
+    
+    render_tool_sequence_comparison(tool_stats1, tool_stats2)
+    
+    render_system_messages_comparison(messages1, messages2)
