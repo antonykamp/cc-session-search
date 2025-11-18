@@ -28,19 +28,25 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
         is_thinking = '[Thinking:' in msg.content
         is_tool_call = '[Calling tool:' in msg.content
         is_mcp_call = False
+        is_skill_call = False
 
-        # Check if this is an MCP tool call
+        # Check if this is an MCP tool call or skill call
         if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
             for tool_call in msg.tool_uses['tool_calls']:
                 tool_name = tool_call.get('name', '')
                 if tool_name.startswith('mcp__'):
                     is_mcp_call = True
                     break
+                elif tool_name == 'Skill':
+                    is_skill_call = True
+                    break
 
         # Determine display type for coloring
         if msg.role == 'assistant':
             if is_thinking:
                 display_type = 'assistant_thinking'
+            elif is_skill_call:
+                display_type = 'assistant_skill_call'
             elif is_mcp_call:
                 display_type = 'assistant_mcp_call'
             elif is_tool_call:
@@ -98,6 +104,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'assistant_text': 150,
         'assistant_thinking': 150,
         'assistant_tool_call': 250,
+        'assistant_skill_call': 300,
         'assistant_mcp_call': 350,
         'tool': 450,
         'file-history-snapshot': 550
@@ -189,6 +196,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'user': ('#3498db', 'User'),
         'assistant_text': ('#2ecc71', 'Assistant (Text)'),
         'assistant_thinking': ('#1abc9c', 'Assistant (Thinking)'),
+        'assistant_skill_call': ('#9b59b6', 'Skill Call'),
         'assistant_mcp_call': ('#8e44ad', 'MCP Tool Call'),
         'assistant_tool_call': ('#e67e22', 'Assistant (Tool Call)'),
         'tool': ('#f39c12', 'Tool Result'),
@@ -269,7 +277,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
             fixedrange=False,
             tickmode='array',
             tickvals=list(set(x_positions.values())),
-            ticktext=['User', 'Assistant', 'Tool Call', 'MCP', 'Tool', 'File'],
+            ticktext=['User', 'Assistant', 'Tool Call', 'Skill', 'MCP', 'Tool', 'File'],
             range=[-20, max(x_positions.values()) + 100]
         ),
         yaxis=dict(

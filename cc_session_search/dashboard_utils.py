@@ -82,13 +82,17 @@ def get_message_type(msg: ParsedMessage) -> str:
     is_tool_call = '[Calling tool:' in msg.content
     has_system_reminder = '<system-reminder>' in msg.content.lower()
 
-    # Check for MCP tool calls
+    # Check for MCP tool calls and skill calls
     is_mcp_call = False
+    is_skill_call = False
     if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
         for tool_call in msg.tool_uses['tool_calls']:
             tool_name = tool_call.get('name', '')
             if tool_name.startswith('mcp__'):
                 is_mcp_call = True
+                break
+            elif tool_name == 'Skill':
+                is_skill_call = True
                 break
 
     if msg.role == 'user':
@@ -96,6 +100,8 @@ def get_message_type(msg: ParsedMessage) -> str:
     elif msg.role == 'assistant':
         if is_thinking:
             return 'assistant_thinking'
+        elif is_skill_call:
+            return 'assistant_skill_call'
         elif is_mcp_call:
             return 'assistant_mcp_call'
         elif is_tool_call:
@@ -160,6 +166,7 @@ MESSAGE_TYPE_INFO = {
     'user': ('👤', '#3498db', 'USER'),
     'assistant_text': ('🤖', '#2ecc71', 'ASSISTANT'),
     'assistant_thinking': ('🧠', '#1abc9c', 'ASSISTANT (THINKING)'),
+    'assistant_skill_call': ('🎯', '#9b59b6', 'SKILL CALL'),
     'assistant_tool_call': ('⚡', '#e67e22', 'ASSISTANT (TOOL CALL)'),
     'assistant_mcp_call': ('🔌', '#8e44ad', 'MCP TOOL CALL'),
     'tool': ('🔧', '#f39c12', 'TOOL RESULT'),
@@ -171,6 +178,7 @@ MESSAGE_TYPE_LABELS = {
     'user': '👤 User',
     'assistant_text': '🤖 Assistant (Text)',
     'assistant_thinking': '🧠 Assistant (Thinking)',
+    'assistant_skill_call': '🎯 Skill Call',
     'assistant_mcp_call': '🔌 MCP Tool Call',
     'assistant_tool_call': '⚡ Assistant (Tool Call)',
     'tool': '🔧 Tool Result',

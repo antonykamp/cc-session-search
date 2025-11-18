@@ -95,6 +95,7 @@ def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
         - 👤 **User** (Blue) - User input messages
         - 🤖 **Assistant** (Green) - Regular assistant responses
         - 🧠 **Assistant Thinking** (Teal) - Internal reasoning/planning
+        - 🎯 **Skill Call** (Purple) - Claude Code skill invocation
         - 🔌 **MCP Tool Call** (Deep Purple) - External MCP server tool invocation
         - ⚡ **Assistant Tool Call** (Orange) - Built-in tool invocation
         - 🔧 **Tool Result** (Amber) - Tool execution results
@@ -182,7 +183,9 @@ def render_single_message(
     # Check for tool call and result mappings
     tool_result_idx = None
     is_mcp_call = False
+    is_skill_call = False
     mcp_tool_name = None
+    skill_name = None
 
     if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
         for tool_call in msg.tool_uses['tool_calls']:
@@ -192,6 +195,11 @@ def render_single_message(
             if tool_name.startswith('mcp__'):
                 is_mcp_call = True
                 mcp_tool_name = tool_name.replace('mcp__', '').replace('__', ' → ')
+            elif tool_name == 'Skill':
+                is_skill_call = True
+                # Extract skill name from input
+                tool_input = tool_call.get('input', {})
+                skill_name = tool_input.get('skill', 'unknown')
 
             if tool_id and tool_id in tool_id_to_result:
                 tool_result_idx = tool_id_to_result[tool_id]
@@ -207,8 +215,8 @@ def render_single_message(
 
     # Get styling based on message type
     icon, color, label = get_message_styling(
-        msg, is_thinking, is_tool_call, is_mcp_call,
-        mcp_tool_name, tool_result_idx, matching_call_idx,
+        msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call,
+        mcp_tool_name, skill_name, tool_result_idx, matching_call_idx,
         matching_call_id, has_system_reminder
     )
 
@@ -229,8 +237,8 @@ def render_single_message(
 
 
 def get_message_styling(
-    msg, is_thinking, is_tool_call, is_mcp_call,
-    mcp_tool_name, tool_result_idx, matching_call_idx,
+    msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call,
+    mcp_tool_name, skill_name, tool_result_idx, matching_call_idx,
     matching_call_id, has_system_reminder
 ):
     """Determine icon, color, and label for a message"""
@@ -240,7 +248,11 @@ def get_message_styling(
         if is_thinking:
             icon, color, label = "🧠", "#1abc9c", "ASSISTANT (THINKING)"
         elif is_tool_call:
-            if is_mcp_call:
+            if is_skill_call:
+                icon = "🎯"
+                color = "#9b59b6"
+                label = f"SKILL CALL: {skill_name}"
+            elif is_mcp_call:
                 icon = "🔌"
                 color = "#8e44ad"
                 label = f"MCP TOOL CALL: {mcp_tool_name}"
