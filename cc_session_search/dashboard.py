@@ -485,12 +485,20 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
                     unsafe_allow_html=True
                 )
 
+                is_tool_result =  msg.role == 'tool'
+
+                max_content_length = 200
                 # Truncate long content
-                content_preview = msg.content[:500] + "..." if len(msg.content) > 500 else msg.content
+                content_preview = msg.content[:max_content_length] + "..." if len(msg.content) > max_content_length else msg.content
 
                 # Display content with appropriate styling
                 if is_thinking:
-                    st.markdown(f'<div style="padding: 10px; background-color: #f8f9fa; border-radius: 5px; font-style: italic; color: #6c757d;">{content_preview}</div>', unsafe_allow_html=True)
+                    if len(msg.content) > max_content_length:
+                        st.markdown(f'<div style="padding: 10px; background-color: #f8f9fa; border-radius: 5px; font-style: italic; color: #6c757d;">{content_preview}</div>', unsafe_allow_html=True)
+                        with st.expander("🧠 Full Thought", expanded=False):
+                            st.markdown(f'<div style="padding: 10px; background-color: #f8f9fa; border-radius: 5px; font-style: italic; color: #6c757d;">{msg.content}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div style="padding: 10px; background-color: #f8f9fa; border-radius: 5px; font-style: italic; color: #6c757d;">{msg.content}</div>', unsafe_allow_html=True)
                 elif is_tool_call:
                     st.markdown(f'<div style="padding: 10px; background-color: #fff3cd; border-radius: 5px; font-family: monospace; color: #856404;">{content_preview}</div>', unsafe_allow_html=True)
 
@@ -502,8 +510,15 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
 
                             with st.expander(f"🔍 Tool Details: {tool_name}", expanded=False):
                                 st.json(tool_input)
-                else:
+                elif is_tool_result: 
                     st.markdown(f'<div style="padding: 10px;">{content_preview}</div>', unsafe_allow_html=True)
+                else:
+                    if len(msg.content) > max_content_length:
+                        st.markdown(f'<div style="padding: 10px;">{content_preview}</div>', unsafe_allow_html=True)
+                        with st.expander("💬 Full Message", expanded=False):
+                            st.markdown(f'<div style="padding: 10px;">{msg.content}</div>', unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<div style="padding: 10px;">{content_preview}</div>', unsafe_allow_html=True)
 
                 # Display tool result details
                 if msg.role == 'tool':
