@@ -201,8 +201,36 @@ class JSONLParser:
 
             # Extract tool uses if present
             tool_uses = None
+            # For tool result messages (role='tool'), extract toolUseResult from top level
             if 'toolUseResult' in raw_msg:
                 tool_uses = raw_msg['toolUseResult']
+                # Also extract tool_use_id from content blocks
+                if isinstance(message_data.get('content'), list):
+                    for block in message_data['content']:
+                        if isinstance(block, dict) and block.get('type') == 'tool_result':
+                            if 'tool_use_id' in block:
+                                # Ensure tool_uses is a dict before assignment
+                                if not isinstance(tool_uses, dict):
+                                    tool_uses = {}
+                                tool_uses['tool_use_id'] = block['tool_use_id']
+                                break
+            # For assistant messages, extract tool_use blocks from content array
+            elif isinstance(message_data.get('content'), list):
+                tool_use_blocks = [block for block in message_data['content']
+                                 if isinstance(block, dict) and block.get('type') == 'tool_use']
+                if tool_use_blocks:
+                    # Store tool use information
+                    tool_uses = {
+                        'tool_calls': tool_use_blocks
+                    }
+
+                    # If content is empty and we have tool calls, add a placeholder
+                    if not content.strip():
+                        tool_names = [block.get('name', 'unknown') for block in tool_use_blocks]
+                        if len(tool_names) == 1:
+                            content = f"[Calling tool: {tool_names[0]}]"
+                        else:
+                            content = f"[Calling {len(tool_names)} tools: {', '.join(tool_names)}]"
 
             # Collect additional metadata
             msg_metadata = {
@@ -240,18 +268,27 @@ class JSONLParser:
             text_parts = []
             for block in content:
                 if isinstance(block, dict):
-                    if block.get('type') == 'text' and 'text' in block:
+                    block_type = block.get('type')
+                    # Extract text blocks
+                    if block_type == 'text' and 'text' in block:
                         text_parts.append(block['text'])
+                    # Extract thinking blocks (internal reasoning)
+                    elif block_type == 'thinking' and 'thinking' in block:
+                        text_parts.append(f"[Thinking: {block['thinking']}]")
+                    # Handle nested content
                     elif 'content' in block:
-                        # Nested content
                         text_parts.append(self._extract_content(block['content']))
+                    # Skip tool_use blocks (already extracted separately)
                 elif isinstance(block, str):
                     text_parts.append(block)
             return '\n'.join(text_parts)
         elif isinstance(content, dict):
             # Single content block
-            if content.get('type') == 'text' and 'text' in content:
+            block_type = content.get('type')
+            if block_type == 'text' and 'text' in content:
                 return content['text']
+            elif block_type == 'thinking' and 'thinking' in content:
+                return f"[Thinking: {content['thinking']}]"
             elif 'content' in content:
                 return self._extract_content(content['content'])
             else:
