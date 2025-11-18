@@ -349,16 +349,16 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
             if base_label in label_to_type:
                 selected_types.append(label_to_type[base_label])
 
-        # Filter messages
-        filtered_messages = [msg for msg in messages if get_message_type(msg) in selected_types]
+        # Filter messages with original indices
+        filtered_messages_with_idx = [(idx, msg) for idx, msg in enumerate(messages) if get_message_type(msg) in selected_types]
 
         # Show filter summary
-        if len(filtered_messages) != len(messages):
-            st.info(f"📊 Showing {len(filtered_messages)} of {len(messages)} messages")
+        if len(filtered_messages_with_idx) != len(messages):
+            st.info(f"📊 Showing {len(filtered_messages_with_idx)} of {len(messages)} messages")
 
         # Pagination
         messages_per_page = 20
-        total_pages = (len(filtered_messages) + messages_per_page - 1) // messages_per_page
+        total_pages = (len(filtered_messages_with_idx) + messages_per_page - 1) // messages_per_page
 
         if total_pages > 0:
             # Only show slider if there are multiple pages
@@ -373,7 +373,7 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
                 page = 1
 
             start_idx = (page - 1) * messages_per_page
-            end_idx = min(start_idx + messages_per_page, len(filtered_messages))
+            end_idx = min(start_idx + messages_per_page, len(filtered_messages_with_idx))
 
             # Build bidirectional tool call ↔ result mapping
             tool_id_to_result = {}  # tool_id -> result_idx
@@ -393,7 +393,7 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
                         tool_id = msg.tool_uses['tool_use_id']
                         tool_id_to_result[tool_id] = msg_idx
 
-            for i, msg in enumerate(filtered_messages[start_idx:end_idx], start=start_idx):
+            for original_idx, msg in filtered_messages_with_idx[start_idx:end_idx]:
                 timestamp_str = msg.timestamp.strftime('%H:%M:%S') if msg.timestamp else 'N/A'
 
                 # Determine message type and styling
@@ -480,7 +480,7 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
                 # Display message with colored header
                 st.markdown(
                     f'<div style="background-color: {color}22; border-left: 4px solid {color}; padding: 10px; margin: 5px 0; border-radius: 5px;">'
-                    f'<p style="margin: 0; color: {color}; font-weight: bold;">{icon} [{i}] {label} <span style="color: #7f8c8d; font-weight: normal; font-size: 0.9em;">({timestamp_str})</span></p>'
+                    f'<p style="margin: 0; color: {color}; font-weight: bold;">{icon} [{original_idx}] {label} <span style="color: #7f8c8d; font-weight: normal; font-size: 0.9em;">({timestamp_str})</span></p>'
                     f'</div>',
                     unsafe_allow_html=True
                 )
