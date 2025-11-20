@@ -29,17 +29,21 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
         is_tool_call = '[Calling tool:' in msg.content
         is_mcp_call = False
         is_skill_call = False
+        skill_name = None
+        mcp_tool_name = None
 
         # Check if this is an MCP tool call or skill call
         if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
+            is_tool_call = True  # Ensure flag is set even if text marker is missing
             for tool_call in msg.tool_uses['tool_calls']:
                 tool_name = tool_call.get('name', '')
                 if tool_name.startswith('mcp__'):
                     is_mcp_call = True
-                    break
+                    mcp_tool_name = tool_name.replace('mcp__', '').replace('__', ' → ')
                 elif tool_name == 'Skill':
                     is_skill_call = True
-                    break
+                    tool_input = tool_call.get('input', {})
+                    skill_name = tool_input.get('skill', 'unknown')
 
         # Determine display type for coloring
         if msg.role == 'assistant':
@@ -66,7 +70,9 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
             'has_tool_use': msg.tool_uses is not None,
             'label': f"{msg.role}_{idx}",
             'is_thinking': is_thinking,
-            'is_tool_call': is_tool_call
+            'is_tool_call': is_tool_call,
+            'skill_name': skill_name,
+            'mcp_tool_name': mcp_tool_name
         }
         nodes.append(node)
 
@@ -214,12 +220,15 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
 
         node_x = [positions[n['id']][0] for n in type_nodes]
         node_y = [positions[n['id']][1] for n in type_nodes]
-        node_text = [
-            f"[{n['id']}] {label}<br>"
-            f"Length: {n['content_length']} chars<br>"
-            f"Tools: {'Yes' if n['has_tool_use'] else 'No'}"
-            for n in type_nodes
-        ]
+        
+        node_text = []
+        for n in type_nodes:
+            text = f"[{n['id']}] {label}<br>Length: {n['content_length']} chars"
+            if n.get('skill_name'):
+                text += f"<br><b>Skill: {n['skill_name']}</b>"
+            if n.get('mcp_tool_name'):
+                text += f"<br><b>MCP Tool: {n['mcp_tool_name']}</b>"
+            node_text.append(text)
 
         trace = go.Scatter(
             x=node_x,
@@ -245,7 +254,20 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
     min_y = min(positions[n['id']][1] for n in nodes)
     max_y = 0
 
-    for x_pos in set(x_positions.values()):
+    # Define axis ticks explicitly to ensure correct ordering
+    axis_ticks = [
+        (50, 'User'),
+        (150, 'Assistant'),
+        (250, 'Tool Call'),
+        (300, 'Skill'),
+        (350, 'MCP'),
+        (450, 'Tool Result'),
+        (550, 'File History')
+    ]
+    tick_vals = [t[0] for t in axis_ticks]
+    tick_text = [t[1] for t in axis_ticks]
+
+    for x_pos in tick_vals:
         lane_lines_x.extend([x_pos, x_pos, None])
         lane_lines_y.extend([max_y, min_y - 50, None])
 
@@ -276,9 +298,9 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
             showticklabels=True,
             fixedrange=False,
             tickmode='array',
-            tickvals=list(set(x_positions.values())),
-            ticktext=['User', 'Assistant', 'Tool Call', 'Skill', 'MCP', 'Tool', 'File'],
-            range=[-20, max(x_positions.values()) + 100]
+            tickvals=tick_vals,
+            ticktext=tick_text,
+            range=[-20, max(tick_vals) + 100]
         ),
         yaxis=dict(
             showgrid=True,
@@ -320,6 +342,15 @@ def create_tool_usage_chart(messages: List[ParsedMessage]) -> go.Figure:
             if 'tool_calls' in msg.tool_uses:
                 for tool_block in msg.tool_uses['tool_calls']:
                     tool_name = tool_block.get('name', 'unknown')
+                    
+                    # Enhance tool names for better visibility
+                    if tool_name == 'Skill':
+                        skill = tool_block.get('input', {}).get('skill', 'unknown')
+                        tool_name = f"Skill: {skill}"
+                    elif tool_name.startswith('mcp__'):
+                        mcp_name = tool_name.replace('mcp__', '').replace('__', ' → ')
+                        tool_name = f"MCP: {mcp_name}"
+                        
                     tool_calls.append(tool_name)
             # Handle old format: direct tool_name field
             elif 'tool_name' in msg.tool_uses:
@@ -446,6 +477,15 @@ def create_comparison_chart(
                 if 'tool_calls' in msg.tool_uses:
                     for tool_block in msg.tool_uses['tool_calls']:
                         tool_name = tool_block.get('name', 'unknown')
+                        
+                        # Enhance tool names
+                        if tool_name == 'Skill':
+                            skill = tool_block.get('input', {}).get('skill', 'unknown')
+                            tool_name = f"Skill: {skill}"
+                        elif tool_name.startswith('mcp__'):
+                            mcp_name = tool_name.replace('mcp__', '').replace('__', ' → ')
+                            tool_name = f"MCP: {mcp_name}"
+                            
                         tool_calls.append(tool_name)
                 # Handle old format: direct tool_name field
                 elif 'tool_name' in msg.tool_uses:
