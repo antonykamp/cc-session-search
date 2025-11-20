@@ -86,6 +86,7 @@ def get_message_type(msg: ParsedMessage) -> str:
     is_mcp_call = False
     is_skill_call = False
     if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
+        is_tool_call = True
         for tool_call in msg.tool_uses['tool_calls']:
             tool_name = tool_call.get('name', '')
             if tool_name.startswith('mcp__'):

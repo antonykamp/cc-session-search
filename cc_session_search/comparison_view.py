@@ -73,11 +73,11 @@ def render_tool_usage_comparison(tool_stats1: dict, tool_stats2: dict, messages1
             'Status': '🟢 More' if diff > 0 else ('🔴 Less' if diff < 0 else '⚪ Same')
         })
 
-    st.dataframe(comparison_data, use_container_width=True, hide_index=True)
+    st.dataframe(comparison_data, width='stretch', hide_index=True)
 
     # Visualization
     fig = create_comparison_chart(messages1, messages2)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
 
 
 def render_tool_sequence_comparison(tool_stats1: dict, tool_stats2: dict):

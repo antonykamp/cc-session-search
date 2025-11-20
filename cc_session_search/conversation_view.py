@@ -69,7 +69,7 @@ def render_tool_usage_section(messages: List[ParsedMessage]):
                 {"Tool": tool, "Count": count}
                 for tool, count in sorted(tool_stats['tool_counts'].items(), key=lambda x: x[1], reverse=True)
             ]
-            st.dataframe(tool_df_data, use_container_width=True, hide_index=True)
+            st.dataframe(tool_df_data, width='stretch', hide_index=True)
         else:
             st.info("No tool calls in this conversation")
 
@@ -177,7 +177,7 @@ def render_single_message(
 
     # Determine message type
     is_thinking = '[Thinking:' in msg.content
-    is_tool_call = '[Calling tool:' in msg.content
+    is_tool_call = '[Calling tool:' in msg.content or (msg.role == 'assistant' and msg.tool_uses and ('tool_calls' in msg.tool_uses or 'tool_name' in msg.tool_uses))
     has_system_reminder = '<system-reminder>' in msg.content.lower()
 
     # Check for tool call and result mappings
@@ -316,6 +316,11 @@ def render_message_content(msg: ParsedMessage, is_thinking: bool, is_tool_call: 
                 tool_name = tool_call.get('name', 'unknown')
                 tool_input = tool_call.get('input', {})
                 
+                # Special handling for Skill calls to make them more visible
+                if tool_name == 'Skill':
+                    skill_name = tool_input.get('skill', 'unknown')
+                    st.markdown(f"**🎯 Skill Executed:** `{skill_name}`")
+
                 with st.expander(f"🔍 Tool Details: {tool_name}", expanded=False):
                     st.json(tool_input)
     elif msg.role == 'tool':
@@ -348,15 +353,15 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
 
         with tab1:
             fig = create_plotly_graph(messages, f"Conversation Flow - {metadata.session_id[:20]}...")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with tab2:
             fig = create_tool_usage_chart(messages)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
         with tab3:
             fig = create_message_timeline(messages)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
 
 def render_conversation_view(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
