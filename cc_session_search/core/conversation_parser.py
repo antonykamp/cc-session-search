@@ -232,11 +232,15 @@ class JSONLParser:
                         else:
                             content = f"[Calling {len(tool_names)} tools: {', '.join(tool_names)}]"
 
+            # Check for meta messages
+            is_meta = raw_msg.get('isMeta', False)
+
             # Collect additional metadata
             msg_metadata = {
                 'original_type': msg_type,
                 'cwd': raw_msg.get('cwd'),
-                'git_branch': raw_msg.get('gitBranch')
+                'git_branch': raw_msg.get('gitBranch'),
+                'is_meta': is_meta
             }
 
             return ParsedMessage(

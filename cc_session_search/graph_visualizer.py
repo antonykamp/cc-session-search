@@ -29,8 +29,13 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
         is_tool_call = '[Calling tool:' in msg.content
         is_mcp_call = False
         is_skill_call = False
+        is_meta = False
         skill_name = None
         mcp_tool_name = None
+
+        # Check for meta messages
+        if msg.metadata:
+            is_meta = msg.metadata.get('is_meta', False)
 
         # Check if this is an MCP tool call or skill call
         if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
@@ -46,7 +51,9 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
                     skill_name = tool_input.get('skill', 'unknown')
 
         # Determine display type for coloring
-        if msg.role == 'assistant':
+        if is_meta:
+            display_type = 'meta'
+        elif msg.role == 'assistant':
             if is_thinking:
                 display_type = 'assistant_thinking'
             elif is_skill_call:
@@ -113,7 +120,8 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'assistant_skill_call': 300,
         'assistant_mcp_call': 350,
         'tool': 450,
-        'file-history-snapshot': 550
+        'meta': 550,
+        'file-history-snapshot': 650
     }
 
     # Position nodes chronologically (top to bottom)
@@ -206,6 +214,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'assistant_mcp_call': ('#8e44ad', 'MCP Tool Call'),
         'assistant_tool_call': ('#e67e22', 'Assistant (Tool Call)'),
         'tool': ('#f39c12', 'Tool Result'),
+        'meta': ('#e91e63', 'Meta'),
         'system': ('#e74c3c', 'System'),
         'file-history-snapshot': ('#95a5a6', 'File History')
     }
@@ -262,7 +271,8 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         (300, 'Skill'),
         (350, 'MCP'),
         (450, 'Tool Result'),
-        (550, 'File History')
+        (550, 'Meta'),
+        (650, 'File History')
     ]
     tick_vals = [t[0] for t in axis_ticks]
     tick_text = [t[1] for t in axis_ticks]

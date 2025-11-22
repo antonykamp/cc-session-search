@@ -99,6 +99,7 @@ def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
         - 🔌 **MCP Tool Call** (Deep Purple) - External MCP server tool invocation
         - ⚡ **Assistant Tool Call** (Orange) - Built-in tool invocation
         - 🔧 **Tool Result** (Amber) - Tool execution results
+        - 🏷️ **Meta** (Pink) - Meta messages (caveats, system notes)
         - ⚠️ **System** - Messages with system reminders
         """)
         st.divider()

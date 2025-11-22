@@ -82,6 +82,9 @@ def get_message_type(msg: ParsedMessage) -> str:
     is_tool_call = '[Calling tool:' in msg.content
     has_system_reminder = '<system-reminder>' in msg.content.lower()
 
+    # Check for meta messages
+    is_meta = msg.metadata.get('is_meta', False) if msg.metadata else False
+
     # Check for MCP tool calls and skill calls
     is_mcp_call = False
     is_skill_call = False
@@ -96,7 +99,10 @@ def get_message_type(msg: ParsedMessage) -> str:
                 is_skill_call = True
                 break
 
-    if msg.role == 'user':
+    # Meta messages take priority
+    if is_meta:
+        return 'meta'
+    elif msg.role == 'user':
         return 'user'
     elif msg.role == 'assistant':
         if is_thinking:
@@ -171,6 +177,7 @@ MESSAGE_TYPE_INFO = {
     'assistant_tool_call': ('⚡', '#e67e22', 'ASSISTANT (TOOL CALL)'),
     'assistant_mcp_call': ('🔌', '#8e44ad', 'MCP TOOL CALL'),
     'tool': ('🔧', '#f39c12', 'TOOL RESULT'),
+    'meta': ('🏷️', '#e91e63', 'META'),
     'system': ('⚠️', '#e74c3c', 'SYSTEM'),
     'file-history-snapshot': ('📄', '#95a5a6', 'FILE HISTORY')
 }
@@ -183,6 +190,7 @@ MESSAGE_TYPE_LABELS = {
     'assistant_mcp_call': '🔌 MCP Tool Call',
     'assistant_tool_call': '⚡ Assistant (Tool Call)',
     'tool': '🔧 Tool Result',
+    'meta': '🏷️ Meta',
     'system': '⚠️ System',
     'file-history-snapshot': '📄 File History'
 }
