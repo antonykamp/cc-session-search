@@ -269,7 +269,11 @@ def get_message_styling(
     matching_call_id, has_system_reminder
 ):
     """Determine icon, color, and label for a message"""
-    if msg.role == 'user':
+    # Check for meta messages first (takes priority over role)
+    is_meta = msg.metadata.get('is_meta', False) if msg.metadata else False
+    if is_meta:
+        icon, color, label = "🏷️", "#e91e63", "META"
+    elif msg.role == 'user':
         icon, color, label = "👤", "#3498db", "USER"
     elif msg.role == 'assistant':
         if is_thinking:
