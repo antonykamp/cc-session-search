@@ -67,13 +67,13 @@ class SessionSearcher:
                 continue
 
             try:
-                # Quick parse for metadata
-                conversation_metadata, messages = self.parser.parse_conversation_file(session_file)
+                # Quick parse for metadata only (no expensive token counting)
+                conversation_metadata, message_count = self.parser.parse_metadata_only(session_file)
 
                 sessions.append({
                     'session_id': conversation_metadata.session_id,
                     'file_path': str(session_file),
-                    'message_count': len(messages),
+                    'message_count': message_count,
                     'started_at': conversation_metadata.started_at.isoformat() if conversation_metadata.started_at else None,
                     'ended_at': conversation_metadata.ended_at.isoformat() if conversation_metadata.ended_at else None,
                     'working_directory': conversation_metadata.working_directory,

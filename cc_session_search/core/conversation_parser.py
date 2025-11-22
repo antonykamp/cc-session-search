@@ -12,9 +12,20 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass
 from uuid import uuid4
-from tokencost import calculate_prompt_cost, calculate_completion_cost, count_message_tokens
+import tiktoken
 
 logger = logging.getLogger(__name__)
+
+# Claude pricing per million tokens (as of Jan 2025)
+# Source: https://www.anthropic.com/pricing
+CLAUDE_PRICING = {
+    'claude-sonnet-4-5-20250929': {'input': 3.00, 'output': 15.00},  # Claude Sonnet 4.5
+    'claude-3-5-sonnet-20241022': {'input': 3.00, 'output': 15.00},  # Claude 3.5 Sonnet
+    'claude-3-5-sonnet-20240620': {'input': 3.00, 'output': 15.00},  # Claude 3.5 Sonnet (older)
+    'claude-3-opus-20240229': {'input': 15.00, 'output': 75.00},     # Claude 3 Opus
+    'claude-3-sonnet-20240229': {'input': 3.00, 'output': 15.00},    # Claude 3 Sonnet
+    'claude-3-haiku-20240307': {'input': 0.25, 'output': 1.25},      # Claude 3 Haiku
+}
 
 
 @dataclass
@@ -49,6 +60,41 @@ class JSONLParser:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
+        # Use cl100k_base encoding (used by GPT-4 and similar models)
+        # This is a good approximation for Claude tokens
+        try:
+            self.encoding = tiktoken.get_encoding("cl100k_base")
+        except Exception as e:
+            self.logger.warning(f"Could not load tiktoken encoding: {e}")
+            self.encoding = None
+
+    def _count_tokens(self, text: str) -> int:
+        """Count tokens in a text string using tiktoken."""
+        if not self.encoding:
+            # Fallback: rough estimate of 4 characters per token
+            return len(text) // 4
+        try:
+            return len(self.encoding.encode(text))
+        except Exception as e:
+            self.logger.debug(f"Token counting failed: {e}")
+            return len(text) // 4
+
+    def _calculate_cost(self, token_count: int, model: str, token_type: str) -> float:
+        """
+        Calculate cost in USD for a given number of tokens.
+
+        Args:
+            token_count: Number of tokens
+            model: Model name
+            token_type: 'input' or 'output'
+
+        Returns:
+            Cost in USD
+        """
+        # Get pricing for model (default to Sonnet 4.5 pricing if unknown)
+        pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING['claude-sonnet-4-5-20250929'])
+        cost_per_million = pricing.get(token_type, 3.00)  # Default to input pricing
+        return (token_count / 1_000_000) * cost_per_million
 
     def parse_conversation_file(self, file_path: Path) -> Tuple[ConversationMetadata, List[ParsedMessage]]:
         """
@@ -112,6 +158,55 @@ class JSONLParser:
                 metadata.ended_at = max(timestamps)
 
         return metadata, messages
+
+    def parse_metadata_only(self, file_path: Path) -> Tuple[ConversationMetadata, int]:
+        """
+        Quick parse to extract only metadata without parsing all messages.
+        Returns (metadata, message_count) - much faster than full parse.
+        """
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                raw_messages = []
+                for line_num, line in enumerate(f, 1):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        raw_message = json.loads(line)
+                        raw_messages.append(raw_message)
+                    except json.JSONDecodeError:
+                        continue
+        except Exception as e:
+            self.logger.error(f"Error reading file {file_path}: {e}")
+            raise
+
+        if not raw_messages:
+            raise ValueError(f"No valid messages found in {file_path}")
+
+        # Extract conversation metadata
+        metadata = self._extract_conversation_metadata(file_path, raw_messages)
+
+        # Count messages quickly (excluding summary and file-history)
+        message_count = sum(1 for msg in raw_messages
+                           if msg.get('type') in ['user', 'assistant'])
+
+        # Get timestamps from raw messages for metadata
+        timestamps = []
+        for msg in raw_messages:
+            if 'timestamp' in msg and msg['timestamp']:
+                try:
+                    ts = datetime.fromisoformat(msg['timestamp'].replace('Z', '+00:00'))
+                    timestamps.append(ts)
+                except (ValueError, TypeError):
+                    pass
+
+        if timestamps:
+            metadata.started_at = min(timestamps)
+            metadata.ended_at = max(timestamps)
+
+        metadata.message_count = message_count
+
+        return metadata, message_count
 
     def _extract_conversation_metadata(self, file_path: Path, raw_messages: List[Dict]) -> ConversationMetadata:
         """Extract metadata from conversation file and messages."""
@@ -247,14 +342,15 @@ class JSONLParser:
 
             try:
                 # Count tokens for the message content
-                msg_for_counting = [{"role": role, "content": content}]
-                token_count = count_message_tokens(msg_for_counting, model)
+                token_count = self._count_tokens(content)
 
                 # Calculate cost based on role
                 if role == 'user':
-                    cost_usd = calculate_prompt_cost(token_count, model)
+                    # User messages are input tokens
+                    cost_usd = self._calculate_cost(token_count, model, 'input')
                 elif role == 'assistant':
-                    cost_usd = calculate_completion_cost(token_count, model)
+                    # Assistant messages are output tokens
+                    cost_usd = self._calculate_cost(token_count, model, 'output')
                 # tool and other roles don't incur direct costs
             except Exception as e:
                 self.logger.debug(f"Could not calculate token cost: {e}")
