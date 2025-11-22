@@ -30,6 +30,12 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
     with st.expander(f"📊 Session Metadata", expanded=False):
         duration_str = format_duration(metadata.started_at, metadata.ended_at)
 
+        # Calculate total tokens and cost
+        total_tokens = sum(msg.token_count for msg in messages)
+        total_cost = sum(msg.cost_usd for msg in messages)
+        user_tokens = sum(msg.token_count for msg in messages if msg.role == 'user')
+        assistant_tokens = sum(msg.token_count for msg in messages if msg.role == 'assistant')
+
         col1, col2 = st.columns(2)
         with col1:
             st.write(f"**Session ID:** {metadata.session_id}")
@@ -40,6 +46,21 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
             st.write(f"**Git Branch:** {metadata.git_branch or 'N/A'}")
             st.write(f"**Started:** {metadata.started_at.strftime('%Y-%m-%d %H:%M:%S') if metadata.started_at else 'N/A'}")
             st.write(f"**Duration:** {duration_str}")
+
+        # Token and cost statistics
+        if total_tokens > 0:
+            st.divider()
+            st.markdown("**💰 Token Usage & Cost:**")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Tokens", f"{total_tokens:,}")
+                st.caption(f"Input: {user_tokens:,} | Output: {assistant_tokens:,}")
+            with col2:
+                st.metric("Total Cost", f"${total_cost:.4f}")
+            with col3:
+                if total_cost > 0 and len(messages) > 0:
+                    avg_cost_per_msg = total_cost / len(messages)
+                    st.metric("Avg/Message", f"${avg_cost_per_msg:.6f}")
 
         # Copy link section
         st.divider()
@@ -221,12 +242,17 @@ def render_single_message(
         matching_call_id, has_system_reminder
     )
 
+    # Format cost display
+    cost_display = ""
+    if msg.token_count > 0:
+        cost_display = f'<span style="color: #7f8c8d; font-weight: normal; font-size: 0.85em;"> | {msg.token_count} tokens | ${msg.cost_usd:.6f}</span>'
+
     # Display message header
     st.markdown(
         f'<div style="background-color: {color}22; border-left: 4px solid {color}; '
         f'padding: 10px; margin: 5px 0; border-radius: 5px;">'
         f'<p style="margin: 0; color: {color}; font-weight: bold;">{icon} [{original_idx}] {label} '
-        f'<span style="color: #7f8c8d; font-weight: normal; font-size: 0.9em;">({timestamp_str})</span></p>'
+        f'<span style="color: #7f8c8d; font-weight: normal; font-size: 0.9em;">({timestamp_str})</span>{cost_display}</p>'
         f'</div>',
         unsafe_allow_html=True
     )

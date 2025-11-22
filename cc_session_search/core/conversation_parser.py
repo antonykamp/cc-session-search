@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass
 from uuid import uuid4
+from tokencost import calculate_prompt_cost, calculate_completion_cost, count_message_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,8 @@ class ParsedMessage:
     timestamp: Optional[datetime]
     tool_uses: Optional[Dict[str, Any]]
     metadata: Dict[str, Any]
+    token_count: int = 0
+    cost_usd: float = 0.0
 
 
 @dataclass
@@ -235,12 +238,34 @@ class JSONLParser:
             # Check for meta messages
             is_meta = raw_msg.get('isMeta', False)
 
+            # Extract model for cost calculation
+            model = message_data.get('model', 'claude-sonnet-4-5-20250929')  # Default to latest
+
+            # Calculate tokens and cost
+            token_count = 0
+            cost_usd = 0.0
+
+            try:
+                # Count tokens for the message content
+                msg_for_counting = [{"role": role, "content": content}]
+                token_count = count_message_tokens(msg_for_counting, model)
+
+                # Calculate cost based on role
+                if role == 'user':
+                    cost_usd = calculate_prompt_cost(token_count, model)
+                elif role == 'assistant':
+                    cost_usd = calculate_completion_cost(token_count, model)
+                # tool and other roles don't incur direct costs
+            except Exception as e:
+                self.logger.debug(f"Could not calculate token cost: {e}")
+
             # Collect additional metadata
             msg_metadata = {
                 'original_type': msg_type,
                 'cwd': raw_msg.get('cwd'),
                 'git_branch': raw_msg.get('gitBranch'),
-                'is_meta': is_meta
+                'is_meta': is_meta,
+                'model': model
             }
 
             return ParsedMessage(
@@ -249,7 +274,9 @@ class JSONLParser:
                 content=content,
                 timestamp=timestamp,
                 tool_uses=tool_uses,
-                metadata=msg_metadata
+                metadata=msg_metadata,
+                token_count=token_count,
+                cost_usd=cost_usd
             )
 
         except Exception as e:

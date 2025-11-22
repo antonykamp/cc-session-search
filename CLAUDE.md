@@ -75,11 +75,13 @@ uv run streamlit run cc_session_search/dashboard.py
 **cc_session_search/core/**
 - `conversation_parser.py`: JSONL parser for Claude Code conversation files
   - `JSONLParser`: Main parser class that handles JSONL conversation files
-  - `ParsedMessage`: Dataclass representing a parsed message with role, content, timestamp, and tool usage
+  - `ParsedMessage`: Dataclass representing a parsed message with role, content, timestamp, tool usage, token count, and cost
   - `ConversationMetadata`: Metadata extracted from conversations (project info, session ID, git branch, timestamps)
   - Handles different message types: user, assistant, tool results, and summary messages
   - Auto-detects and reclassifies tool responses (originally role='user' with tool_result content blocks)
   - Fixes missing timestamps using subsequent message timestamps or file modification time
+  - Calculates token count and USD cost for each message using tokencost library
+  - Extracts model information from assistant messages for accurate pricing
 
 - `searcher.py`: Core search and session analysis functionality
   - `SessionSearcher`: Main search class
@@ -115,6 +117,8 @@ uv run streamlit run cc_session_search/dashboard.py
 - URL parameter support for shareable links (found in Session Metadata expander)
 - Message type filtering with counts and bidirectional tool call linking
 - Full tool result display in expandable sections
+- Token counting and cost calculation for each message and conversation
+- Displays input/output tokens, total cost, and average cost per message
 
 **cc_session_search/graph_visualizer.py**
 - Conversation graph visualization using Plotly
@@ -160,4 +164,5 @@ No formal test suite currently exists. Manual testing is done via CLI commands.
 - Streamlit 1.28.0+ for interactive dashboard
 - Plotly 5.17.0+ for interactive visualizations
 - Pandas 2.1.0+ for data manipulation
+- tokencost 0.1.0+ for token counting and cost calculation
 - `uv` package manager for dependency management
