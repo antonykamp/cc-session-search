@@ -69,7 +69,7 @@ def main():
         mode = st.radio(
             "Mode",
             ["Single Session", "Compare Sessions"],
-            index=1
+            index=0
         )
 
         st.divider()

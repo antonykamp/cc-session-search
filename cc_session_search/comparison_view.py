@@ -32,22 +32,39 @@ def render_shareable_link(metadata1: ConversationMetadata, metadata2: Conversati
 
 def render_stats_comparison(messages1: List[ParsedMessage], messages2: List[ParsedMessage]):
     """Render high-level statistics comparison"""
-    col1, col2, col3 = st.columns(3)
+    st.markdown("**📈 Session Comparison**")
+
+    # Calculate statistics
+    total_tokens1 = sum(msg.token_count for msg in messages1)
+    total_tokens2 = sum(msg.token_count for msg in messages2)
+    total_cost1 = sum(msg.cost_usd for msg in messages1)
+    total_cost2 = sum(msg.cost_usd for msg in messages2)
 
     tool_stats1 = get_tool_usage_stats(messages1)
     tool_stats2 = get_tool_usage_stats(messages2)
 
+    # Primary metrics - Messages and Tokens equally prominent
+    col1, col2, col3, col4 = st.columns(4)
+
     with col1:
+        msg_delta = len(messages2) - len(messages1)
         st.metric("Session 1 Messages", len(messages1))
-        st.metric("Session 2 Messages", len(messages2))
+        st.metric("Session 2 Messages", len(messages2), delta=msg_delta)
 
     with col2:
-        st.metric("Session 1 Tool Calls", tool_stats1['total_calls'])
-        st.metric("Session 2 Tool Calls", tool_stats2['total_calls'])
+        token_delta = total_tokens2 - total_tokens1
+        st.metric("Session 1 Tokens", f"{total_tokens1:,}")
+        st.metric("Session 2 Tokens", f"{total_tokens2:,}", delta=f"{token_delta:,}")
 
     with col3:
-        st.metric("Session 1 Unique Tools", tool_stats1['unique_tools'])
-        st.metric("Session 2 Unique Tools", tool_stats2['unique_tools'])
+        cost_delta = total_cost2 - total_cost1
+        st.metric("Session 1 Cost", f"${total_cost1:.4f}")
+        st.metric("Session 2 Cost", f"${total_cost2:.4f}", delta=f"${cost_delta:.4f}")
+
+    with col4:
+        tool_delta = tool_stats2['total_calls'] - tool_stats1['total_calls']
+        st.metric("Session 1 Tool Calls", tool_stats1['total_calls'])
+        st.metric("Session 2 Tool Calls", tool_stats2['total_calls'], delta=tool_delta)
 
     return tool_stats1, tool_stats2
 

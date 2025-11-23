@@ -28,39 +28,54 @@ from cc_session_search.graph_visualizer import (
 def render_metadata_section(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
     """Render session metadata section"""
     with st.expander(f"📊 Session Metadata", expanded=False):
-        duration_str = format_duration(metadata.started_at, metadata.ended_at)
+        # Calculate message and token statistics
+        total_messages = len(messages)
+        user_messages = sum(1 for msg in messages if msg.role == 'user')
+        assistant_messages = sum(1 for msg in messages if msg.role == 'assistant')
+        tool_messages = sum(1 for msg in messages if msg.role == 'tool')
 
-        # Calculate total tokens and cost
         total_tokens = sum(msg.token_count for msg in messages)
-        total_cost = sum(msg.cost_usd for msg in messages)
         user_tokens = sum(msg.token_count for msg in messages if msg.role == 'user')
         assistant_tokens = sum(msg.token_count for msg in messages if msg.role == 'assistant')
+        total_cost = sum(msg.cost_usd for msg in messages)
 
+        duration_str = format_duration(metadata.started_at, metadata.ended_at)
+
+        # Key metrics section - Messages and Tokens equally prominent
+        st.markdown("**📈 Session Summary**")
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+            st.metric("Total Messages", f"{total_messages}")
+            st.caption(f"👤 {user_messages} · 🤖 {assistant_messages} · 🔧 {tool_messages}")
+
+        with col2:
+            st.metric("Total Tokens", f"{total_tokens:,}")
+            st.caption(f"Input: {user_tokens:,} | Output: {assistant_tokens:,}")
+
+        with col3:
+            st.metric("Total Cost", f"${total_cost:.4f}")
+            if total_cost > 0 and total_messages > 0:
+                avg_cost = total_cost / total_messages
+                st.caption(f"${avg_cost:.6f} per message")
+
+        with col4:
+            st.metric("Duration", duration_str)
+            if metadata.started_at:
+                st.caption(f"{metadata.started_at.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Session details
+        st.divider()
+        st.markdown("**🔍 Session Details**")
         col1, col2 = st.columns(2)
+
         with col1:
             st.write(f"**Session ID:** {metadata.session_id}")
             st.write(f"**Project:** {metadata.project_name}")
-            st.write(f"**Working Dir:** {metadata.working_directory or 'N/A'}")
-        with col2:
-            st.write(f"**Messages:** {len(messages)}")
-            st.write(f"**Git Branch:** {metadata.git_branch or 'N/A'}")
-            st.write(f"**Started:** {metadata.started_at.strftime('%Y-%m-%d %H:%M:%S') if metadata.started_at else 'N/A'}")
-            st.write(f"**Duration:** {duration_str}")
 
-        # Token and cost statistics
-        if total_tokens > 0:
-            st.divider()
-            st.markdown("**💰 Token Usage & Cost:**")
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Total Tokens", f"{total_tokens:,}")
-                st.caption(f"Input: {user_tokens:,} | Output: {assistant_tokens:,}")
-            with col2:
-                st.metric("Total Cost", f"${total_cost:.4f}")
-            with col3:
-                if total_cost > 0 and len(messages) > 0:
-                    avg_cost_per_msg = total_cost / len(messages)
-                    st.metric("Avg/Message", f"${avg_cost_per_msg:.6f}")
+        with col2:
+            st.write(f"**Git Branch:** {metadata.git_branch or 'N/A'}")
+            st.write(f"**Working Dir:** {metadata.working_directory or 'N/A'}")
 
         # Copy link section
         st.divider()
