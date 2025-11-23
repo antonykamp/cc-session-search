@@ -87,16 +87,25 @@ def get_message_type(msg: ParsedMessage) -> str:
     if is_meta:
         return 'meta'
 
-    # Check for MCP tool calls, skill calls, and Read calls to .claude/skills
+    # Check for subagent result (tool role with toolUseResult containing agentId)
+    if msg.role == 'tool' and msg.tool_uses:
+        if 'agentId' in msg.tool_uses or 'agent_id' in msg.tool_uses:
+            return 'subagent_result'
+
+    # Check for MCP tool calls, skill calls, Task calls, and Read calls to .claude/skills
     is_mcp_call = False
     is_skill_call = False
     is_skill_read = False
+    is_subagent_call = False
     if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
         is_tool_call = True
         for tool_call in msg.tool_uses['tool_calls']:
             tool_name = tool_call.get('name', '')
             if tool_name.startswith('mcp__'):
                 is_mcp_call = True
+                break
+            elif tool_name == 'Task':
+                is_subagent_call = True
                 break
             elif tool_name == 'Skill':
                 is_skill_call = True
@@ -117,6 +126,8 @@ def get_message_type(msg: ParsedMessage) -> str:
     elif msg.role == 'assistant':
         if is_thinking:
             return 'assistant_thinking'
+        elif is_subagent_call:
+            return 'assistant_subagent_call'
         elif is_mcp_call:
             return 'assistant_mcp_call'
         elif is_tool_call:
@@ -183,9 +194,11 @@ MESSAGE_TYPE_INFO = {
     'assistant_thinking': ('🧠', '#1abc9c', 'ASSISTANT (THINKING)'),
     'skill_context': ('🎯', '#9b59b6', 'SKILL CONTEXT'),
     'meta': ('🏷️', '#e91e63', 'META'),
+    'assistant_subagent_call': ('🤖🔗', '#6c5ce7', 'SUBAGENT CALL'),
     'assistant_tool_call': ('⚡', '#e67e22', 'ASSISTANT (TOOL CALL)'),
     'assistant_mcp_call': ('🔌', '#8e44ad', 'MCP TOOL CALL'),
     'tool': ('🔧', '#f39c12', 'TOOL RESULT'),
+    'subagent_result': ('🤖✅', '#a29bfe', 'SUBAGENT RESULT'),
     'system': ('⚠️', '#e74c3c', 'SYSTEM'),
     'file-history-snapshot': ('📄', '#95a5a6', 'FILE HISTORY')
 }
@@ -196,9 +209,11 @@ MESSAGE_TYPE_LABELS = {
     'assistant_thinking': '🧠 Assistant (Thinking)',
     'skill_context': '🎯 Skill Context',
     'meta': '🏷️ Meta',
+    'assistant_subagent_call': '🤖🔗 Subagent Call',
     'assistant_mcp_call': '🔌 MCP Tool Call',
     'assistant_tool_call': '⚡ Assistant (Tool Call)',
     'tool': '🔧 Tool Result',
+    'subagent_result': '🤖✅ Subagent Result',
     'system': '⚠️ System',
     'file-history-snapshot': '📄 File History'
 }

@@ -50,30 +50,46 @@ def render_session_selector(searcher: SessionSearcher, key_suffix: str) -> Optio
     selected_project = project_names[selected_idx]
 
     # Session selector
-    sessions = searcher.get_sessions_for_project(selected_project, days_back=30)
+    sessions = searcher.get_sessions_for_project(selected_project, days_back=30, include_subagents=False)
     if not sessions:
         st.warning(f"No sessions found for project {selected_project}")
         return None
 
-    session_display = [
-        f"{s['started_at'][:10] if s['started_at'] else 'unknown'} ({s['message_count']} msgs) - {s['session_id'][:20]}..."
-        for s in sessions
-    ]
+    # Build display list with nested subagents
+    session_display = []
+    session_ids = []
+
+    for s in sessions:
+        # Main session
+        date_str = s['started_at'][:10] if s['started_at'] else 'unknown'
+        subagent_count = len(s.get('subagents', []))
+        subagent_suffix = f" +{subagent_count} subagent{'s' if subagent_count != 1 else ''}" if subagent_count > 0 else ""
+
+        display_text = f"{date_str} ({s['message_count']} msgs{subagent_suffix}) - {s['session_id'][:20]}..."
+        session_display.append(display_text)
+        session_ids.append(s['session_id'])
+
+        # Add subagents as indented options
+        for sub in s.get('subagents', []):
+            sub_date = sub['started_at'][:10] if sub['started_at'] else 'unknown'
+            agent_type = sub.get('agent_type', 'Unknown')
+            sub_display = f"  ↳ [{agent_type}] {sub_date} ({sub['message_count']} msgs) - {sub['session_id'][:25]}..."
+            session_display.append(sub_display)
+            session_ids.append(sub['session_id'])
 
     # Pre-select from URL if available
     default_session_idx = 0
-    session_ids = [s['session_id'] for s in sessions]
     if url_session and url_session in session_ids:
         default_session_idx = session_ids.index(url_session)
 
     session_idx = st.selectbox(
         f"Select Session {key_suffix}",
-        range(len(sessions)),
+        range(len(session_ids)),
         format_func=lambda i: session_display[i],
         index=default_session_idx,
         key=f"session_{key_suffix}"
     )
 
-    selected_session = sessions[session_idx]['session_id']
+    selected_session = session_ids[session_idx]
 
     return (selected_project, selected_session)

@@ -24,10 +24,61 @@ from cc_session_search.graph_visualizer import (
 )
 
 
+def render_subagent_section(metadata: ConversationMetadata, key_suffix: str):
+    """Render subagent information section if this is a parent or subagent session"""
+    from cc_session_search.core.searcher import SessionSearcher
+
+    # Display parent link if this is a subagent
+    if metadata.is_subagent:
+        st.info(f"🔗 **Subagent Session** — Agent Type: `{metadata.agent_type or 'Unknown'}` | Parent: `{metadata.parent_session_id}`")
+
+        # Use link instead of button to avoid rerun conflicts
+        parent_url = f"?mode=single&project1={metadata.project_name}&session1={metadata.parent_session_id}"
+        st.markdown(f"[↗️ View Parent Session]({parent_url})")
+        return
+
+    # Find subagents for this session
+    searcher = SessionSearcher()
+    project_name = metadata.project_name
+
+    # Extract the base session ID (remove .jsonl and conversation- prefix if present)
+    session_id = metadata.session_id
+    if session_id.startswith('conversation-'):
+        session_id = session_id.replace('conversation-', '')
+
+    subagents = searcher.find_subagents_for_session(session_id, project_name)
+
+    if subagents:
+        with st.expander(f"🤖 Subagent Sessions ({len(subagents)})", expanded=False):
+            st.markdown("This session spawned the following subagent(s):")
+
+            for sub in subagents:
+                col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
+
+                with col1:
+                    agent_type_badge = sub['agent_type'] or 'Unknown'
+                    st.markdown(f"**{agent_type_badge}**")
+
+                with col2:
+                    st.caption(f"ID: `{sub['agent_id']}`")
+
+                with col3:
+                    st.caption(f"📝 {sub['message_count']} messages")
+
+                with col4:
+                    # Use link instead of button to avoid rerun conflicts
+                    sub_url = f"?mode=single&project1={project_name}&session1={sub['session_id']}"
+                    st.markdown(f"[View]({sub_url})")
+
+                st.divider()
+
+
 def render_metadata_section(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
     """Render session metadata section"""
-    with st.expander(f"📊 Session Metadata", expanded=False):
-        # Calculate message and token statistics
+    from cc_session_search.core.searcher import SessionSearcher
+
+    with st.expander(f"📊 Session Metadata", expanded=True):
+        # Calculate message and token statistics for this session
         total_messages = len(messages)
         user_messages = sum(1 for msg in messages if msg.role == 'user')
         assistant_messages = sum(1 for msg in messages if msg.role == 'assistant')
@@ -39,6 +90,57 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
         total_cost = sum(msg.cost_usd for msg in messages)
 
         duration_str = format_duration(metadata.started_at, metadata.ended_at)
+
+        # Check for subagents and calculate aggregate metrics
+        aggregate_metrics = None
+        if not metadata.is_subagent:
+            searcher = SessionSearcher()
+            session_id = metadata.session_id
+            if session_id.startswith('conversation-'):
+                session_id = session_id.replace('conversation-', '')
+
+            subagents = searcher.find_subagents_for_session(session_id, metadata.project_name)
+            if subagents:
+                # Get full session data with aggregate metrics
+                session_data = searcher.get_session_with_subagents(session_id, metadata.project_name)
+                if session_data:
+                    aggregate_metrics = session_data['aggregate_metrics']
+
+        # Display aggregate metrics if we have subagents
+        if aggregate_metrics:
+            st.markdown("**🌐 Aggregate Summary (Including Subagents)**")
+            col1, col2, col3, col4 = st.columns(4)
+
+            with col1:
+                st.metric(
+                    "Total Sessions",
+                    f"{aggregate_metrics['session_count']}",
+                    help="Main session + subagents"
+                )
+
+            with col2:
+                st.metric(
+                    "Total Tokens",
+                    f"{aggregate_metrics['total_tokens']:,}",
+                    delta=f"+{aggregate_metrics['subagent_tokens']:,} from subagents"
+                )
+
+            with col3:
+                st.metric(
+                    "Total Cost",
+                    f"${aggregate_metrics['total_cost_usd']:.4f}",
+                    delta=f"+${aggregate_metrics['subagent_cost']:.4f} from subagents"
+                )
+
+            with col4:
+                pct_subagent = (aggregate_metrics['subagent_tokens'] / aggregate_metrics['total_tokens'] * 100) if aggregate_metrics['total_tokens'] > 0 else 0
+                st.metric(
+                    "Subagent %",
+                    f"{pct_subagent:.1f}%",
+                    help="Percentage of tokens from subagents"
+                )
+
+            st.divider()
 
         # Key metrics section - Messages and Tokens equally prominent
         st.markdown("**📈 Session Summary**")
@@ -209,8 +311,11 @@ def render_single_message(
     is_mcp_call = False
     is_skill_call = False
     is_skill_read = False
+    is_subagent_call = False
     mcp_tool_name = None
     skill_name = None
+    subagent_type = None
+    subagent_id = None
 
     if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
         for tool_call in msg.tool_uses['tool_calls']:
@@ -220,6 +325,11 @@ def render_single_message(
             if tool_name.startswith('mcp__'):
                 is_mcp_call = True
                 mcp_tool_name = tool_name.replace('mcp__', '').replace('__', ' → ')
+            elif tool_name == 'Task':
+                is_subagent_call = True
+                # Extract subagent type from the prompt/description
+                tool_input = tool_call.get('input', {})
+                subagent_type = tool_input.get('subagent_type', 'Unknown')
             elif tool_name == 'Skill':
                 is_skill_call = True
                 # Extract skill name from input
@@ -238,7 +348,13 @@ def render_single_message(
     # Check if tool result
     matching_call_idx = None
     matching_call_id = None
+    is_subagent_result = False
     if msg.role == 'tool' and msg.tool_uses:
+        # Check for subagent result
+        if 'agentId' in msg.tool_uses:
+            is_subagent_result = True
+            subagent_id = msg.tool_uses.get('agentId', 'unknown')
+
         if isinstance(msg.tool_uses, dict) and 'tool_use_id' in msg.tool_uses:
             matching_call_id = msg.tool_uses['tool_use_id']
             if matching_call_id in tool_id_to_call:
@@ -247,8 +363,9 @@ def render_single_message(
     # Get styling based on message type
     icon, color, label = get_message_styling(
         msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call, is_skill_read,
-        mcp_tool_name, skill_name, tool_result_idx, matching_call_idx,
-        matching_call_id, has_system_reminder
+        is_subagent_call, is_subagent_result,
+        mcp_tool_name, skill_name, subagent_type, subagent_id,
+        tool_result_idx, matching_call_idx, matching_call_id, has_system_reminder
     )
 
     # Format cost display
@@ -274,14 +391,22 @@ def render_single_message(
 
 def get_message_styling(
     msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call, is_skill_read,
-    mcp_tool_name, skill_name, tool_result_idx, matching_call_idx,
-    matching_call_id, has_system_reminder
+    is_subagent_call, is_subagent_result,
+    mcp_tool_name, skill_name, subagent_type, subagent_id,
+    tool_result_idx, matching_call_idx, matching_call_id, has_system_reminder
 ):
     """Determine icon, color, and label for a message"""
     # Check for meta messages first (takes priority - separate from skill context)
     is_meta = msg.metadata.get('is_meta', False) if msg.metadata else False
     if is_meta:
         icon, color, label = "🏷️", "#e91e63", "META"
+    # Handle subagent results
+    elif is_subagent_result:
+        icon = "🤖✅"
+        color = "#a29bfe"
+        label = f"SUBAGENT RESULT (Agent: {subagent_id})"
+        if matching_call_idx is not None:
+            label += f" ← Called from [{matching_call_idx}]"
     # Handle skill calls and skill reads
     elif is_skill_call or is_skill_read:
         icon = "🎯"
@@ -299,15 +424,22 @@ def get_message_styling(
         if is_thinking:
             icon, color, label = "🧠", "#1abc9c", "ASSISTANT (THINKING)"
         elif is_tool_call:
-            if is_mcp_call:
+            if is_subagent_call:
+                icon = "🤖🔗"
+                color = "#6c5ce7"
+                label = f"SUBAGENT CALL: {subagent_type}"
+                if tool_result_idx is not None:
+                    label += f" → Result at [{tool_result_idx}]"
+            elif is_mcp_call:
                 icon = "🔌"
                 color = "#8e44ad"
                 label = f"MCP TOOL CALL: {mcp_tool_name}"
+                if tool_result_idx is not None:
+                    label += f" → Result at [{tool_result_idx}]"
             else:
                 icon, color, label = "⚡", "#e67e22", "ASSISTANT (TOOL CALL)"
-
-            if tool_result_idx is not None:
-                label += f" → Result at [{tool_result_idx}]"
+                if tool_result_idx is not None:
+                    label += f" → Result at [{tool_result_idx}]"
         else:
             icon, color, label = "🤖", "#2ecc71", "ASSISTANT"
     elif msg.role == 'tool':
@@ -415,6 +547,7 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
     """Main function to render complete conversation view"""
     render_metadata_section(metadata, messages, key_suffix)
     render_tool_usage_section(messages)
+    render_subagent_section(metadata, key_suffix)
     render_system_messages_section(messages)
     render_message_browser(messages, key_suffix)
     render_visualizations(messages, metadata)

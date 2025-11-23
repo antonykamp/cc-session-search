@@ -171,6 +171,85 @@ def summarize_time_range(args):
         print(format_output(result, args.format))
 
 
+def get_session_with_subagents(args):
+    """Get session details including subagent information and aggregate metrics"""
+    searcher = SessionSearcher()
+    result = searcher.get_session_with_subagents(args.session_id, args.project_filter)
+
+    if not result:
+        print(f"Error: Session {args.session_id} not found", file=sys.stderr)
+        sys.exit(1)
+
+    if args.format == 'table' or args.format == 'pretty':
+        metadata = result['metadata']
+        agg = result['aggregate_metrics']
+
+        print(f"\n=== Session: {metadata.session_id} ===")
+        print(f"Project: {metadata.project_name}")
+        print(f"Is Subagent: {metadata.is_subagent}")
+        if metadata.is_subagent:
+            print(f"Parent: {metadata.parent_session_id}")
+            print(f"Agent Type: {metadata.agent_type}")
+
+        print(f"\n=== Messages ===")
+        print(f"Total: {len(result['messages'])}")
+
+        print(f"\n=== Aggregate Metrics ===")
+        print(f"Total Sessions: {agg['session_count']}")
+        print(f"Total Tokens: {agg['total_tokens']:,}")
+        print(f"  - Main Session: {agg['main_session_tokens']:,}")
+        print(f"  - Subagents: {agg['subagent_tokens']:,}")
+        print(f"Total Cost: ${agg['total_cost_usd']:.4f}")
+        print(f"  - Main Session: ${agg['main_session_cost']:.4f}")
+        print(f"  - Subagents: ${agg['subagent_cost']:.4f}")
+
+        if result['subagents']:
+            print(f"\n=== Subagents ({len(result['subagents'])}) ===")
+            for sub in result['subagents']:
+                print(f"  - {sub['agent_type']} (ID: {sub['agent_id']})")
+                print(f"    Messages: {sub['message_count']}, Tokens: {sub.get('token_count', 'N/A'):,}, Cost: ${sub.get('cost_usd', 0):.4f}")
+    else:
+        # For JSON output, convert metadata to dict
+        output = {
+            'metadata': {
+                'session_id': result['metadata'].session_id,
+                'project_name': result['metadata'].project_name,
+                'is_subagent': result['metadata'].is_subagent,
+                'parent_session_id': result['metadata'].parent_session_id,
+                'agent_id': result['metadata'].agent_id,
+                'agent_type': result['metadata'].agent_type,
+                'git_branch': result['metadata'].git_branch,
+                'working_directory': result['metadata'].working_directory,
+            },
+            'message_count': len(result['messages']),
+            'subagents': result['subagents'],
+            'aggregate_metrics': result['aggregate_metrics']
+        }
+        print(format_output(output, args.format))
+
+
+def list_subagents(args):
+    """List all subagents for a specific session"""
+    searcher = SessionSearcher()
+    subagents = searcher.find_subagents_for_session(args.session_id, args.project_name)
+
+    if args.format == 'table':
+        if not subagents:
+            print(f"No subagents found for session {args.session_id}")
+            return
+
+        print(f"{'Agent Type':<15} {'Agent ID':<15} {'Messages':<10} {'Started At':<25}")
+        print("-" * 65)
+        for sub in subagents:
+            agent_type = sub['agent_type'] or 'Unknown'
+            agent_id = sub['agent_id']
+            messages = sub['message_count']
+            started = sub['started_at'][:19] if sub['started_at'] else 'N/A'
+            print(f"{agent_type:<15} {agent_id:<15} {messages:<10} {started:<25}")
+    else:
+        print(format_output(subagents, args.format))
+
+
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
@@ -255,7 +334,19 @@ def main():
     range_parser.add_argument('--style', choices=['journal', 'insights', 'stories'],
                              default='journal', help='Summary style')
     range_parser.add_argument('--project-filter', help='Filter to specific project')
-    
+
+    # get-session-with-subagents command
+    session_sub_parser = subparsers.add_parser('get-session-with-subagents',
+                                              help='Get session details with subagent info and aggregate metrics')
+    session_sub_parser.add_argument('session_id', help='Session ID')
+    session_sub_parser.add_argument('--project-filter', help='Filter to specific project')
+
+    # list-subagents command
+    list_sub_parser = subparsers.add_parser('list-subagents',
+                                           help='List all subagents for a session')
+    list_sub_parser.add_argument('session_id', help='Parent session ID')
+    list_sub_parser.add_argument('project_name', help='Project name (encoded)')
+
     args = parser.parse_args()
     
     if not args.command:
@@ -281,6 +372,10 @@ def main():
             summarize_daily(args)
         elif args.command == 'summarize-range':
             summarize_time_range(args)
+        elif args.command == 'get-session-with-subagents':
+            get_session_with_subagents(args)
+        elif args.command == 'list-subagents':
+            list_subagents(args)
         else:
             parser.print_help()
             sys.exit(1)

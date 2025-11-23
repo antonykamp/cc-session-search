@@ -53,6 +53,17 @@ class ConversationMetadata:
     working_directory: Optional[str]
     message_count: int
     file_path: str
+    # Subagent-related fields
+    is_subagent: bool = False
+    parent_session_id: Optional[str] = None
+    agent_id: Optional[str] = None
+    agent_type: Optional[str] = None  # e.g., "Explore", "Plan", "claude-code-guide"
+    subagent_ids: List[str] = None  # List of child agent IDs (for parent sessions)
+
+    def __post_init__(self):
+        """Initialize mutable default values."""
+        if self.subagent_ids is None:
+            self.subagent_ids = []
 
 
 class JSONLParser:
@@ -220,14 +231,46 @@ class JSONLParser:
         git_branch = None
         working_directory = None
 
+        # Subagent detection
+        is_subagent = False
+        parent_session_id = None
+        agent_id = None
+        agent_type = None
+
         for msg in raw_messages:
             if 'gitBranch' in msg and msg['gitBranch']:
                 git_branch = msg['gitBranch']
             if 'cwd' in msg and msg['cwd']:
                 working_directory = msg['cwd']
 
+            # Detect subagent from first message with sidechain flag
+            if msg.get('isSidechain') and msg.get('agentId'):
+                is_subagent = True
+                agent_id = msg.get('agentId')
+                # Parent session ID is stored in sessionId field for subagents
+                parent_session_id = msg.get('sessionId')
+
+                # Try to extract agent type from message content or metadata
+                # Agent type might be in the first assistant message's context
+                message_data = msg.get('message', {})
+                if message_data.get('role') == 'assistant':
+                    # Look for agent type indicators in content
+                    content = message_data.get('content', [])
+                    if isinstance(content, list):
+                        for block in content:
+                            if isinstance(block, dict) and block.get('type') == 'text':
+                                text = block.get('text', '')
+                                # Try to infer agent type from common patterns
+                                if 'explore' in text.lower() or 'exploration' in text.lower():
+                                    agent_type = 'Explore'
+                                elif 'plan' in text.lower():
+                                    agent_type = 'Plan'
+                                elif 'claude code' in text.lower() or 'documentation' in text.lower():
+                                    agent_type = 'claude-code-guide'
+                                break
+
             # Break after finding branch info (usually consistent throughout conversation)
-            if git_branch:
+            if git_branch and (not is_subagent or agent_type):
                 break
 
         return ConversationMetadata(
@@ -239,7 +282,11 @@ class JSONLParser:
             ended_at=None,    # Will be filled after parsing messages
             working_directory=working_directory,
             message_count=0,  # Will be filled after parsing messages
-            file_path=str(file_path)
+            file_path=str(file_path),
+            is_subagent=is_subagent,
+            parent_session_id=parent_session_id,
+            agent_id=agent_id,
+            agent_type=agent_type
         )
 
     def _parse_message(self, raw_msg: Dict, metadata: ConversationMetadata) -> Optional[ParsedMessage]:

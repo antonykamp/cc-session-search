@@ -94,7 +94,7 @@ def main():
         project1, session1 = session1_info
         metadata1, messages1 = load_conversation(session1, project1)
 
-        # Update URL parameters based on current selections
+        # Update URL parameters based on current selections (only if changed)
         new_params = {
             'mode': 'compare' if mode == "Compare Sessions" else 'single',
             'project1': project1,
@@ -106,8 +106,10 @@ def main():
             new_params['project2'] = project2
             new_params['session2'] = session2
 
-        # Update query params to reflect current state
-        st.query_params.update(new_params)
+        # Only update query params if they differ from current values
+        current_params = dict(st.query_params)
+        if current_params != new_params:
+            st.query_params.update(new_params)
 
         if mode == "Single Session":
             # Single session view
