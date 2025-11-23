@@ -53,14 +53,13 @@ def main():
     st.title("🔍 Claude Code Session Explorer")
     st.markdown("Interactive dashboard for analyzing and comparing Claude Code conversation sessions")
 
-    # Check if session is being loaded from URL
-    query_params = st.query_params
-    if query_params:
-        param_keys = list(query_params.keys())
-        if any(k.startswith('project') or k.startswith('session') for k in param_keys):
-            st.info("📎 Session loaded from shareable link")
-
     searcher = get_searcher()
+
+    # Get mode from URL or default
+    query_params = st.query_params
+    default_mode_idx = 0
+    if query_params.get('mode') == 'compare':
+        default_mode_idx = 1
 
     # Sidebar
     with st.sidebar:
@@ -69,7 +68,8 @@ def main():
         mode = st.radio(
             "Mode",
             ["Single Session", "Compare Sessions"],
-            index=0
+            index=default_mode_idx,
+            key="mode_selector"
         )
 
         st.divider()
@@ -93,6 +93,21 @@ def main():
         # Load session 1
         project1, session1 = session1_info
         metadata1, messages1 = load_conversation(session1, project1)
+
+        # Update URL parameters based on current selections
+        new_params = {
+            'mode': 'compare' if mode == "Compare Sessions" else 'single',
+            'project1': project1,
+            'session1': session1
+        }
+
+        if mode == "Compare Sessions" and session2_info:
+            project2, session2 = session2_info
+            new_params['project2'] = project2
+            new_params['session2'] = session2
+
+        # Update query params to reflect current state
+        st.query_params.update(new_params)
 
         if mode == "Single Session":
             # Single session view

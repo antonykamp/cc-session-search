@@ -3,7 +3,6 @@ Comparison view component for side-by-side session analysis
 """
 
 import streamlit as st
-import urllib.parse
 from typing import List
 
 from cc_session_search.core.conversation_parser import ParsedMessage, ConversationMetadata
@@ -12,22 +11,6 @@ from cc_session_search.dashboard_utils import (
     get_tool_usage_stats
 )
 from cc_session_search.graph_visualizer import create_comparison_chart
-
-
-def render_shareable_link(metadata1: ConversationMetadata, metadata2: ConversationMetadata):
-    """Render shareable link for comparison"""
-    with st.expander("📎 Share This Comparison", expanded=False):
-        params = {
-            'project1': metadata1.project_name,
-            'session1': metadata1.session_id,
-            'project2': metadata2.project_name,
-            'session2': metadata2.session_id
-        }
-        query_string = urllib.parse.urlencode(params)
-        shareable_link = f"?{query_string}"
-
-        st.code(shareable_link, language=None)
-        st.caption("📋 Copy and append to your dashboard URL to share this comparison")
 
 
 def render_stats_comparison(messages1: List[ParsedMessage], messages2: List[ParsedMessage]):
@@ -155,12 +138,10 @@ def render_comparison_view(
     """Main function to render complete comparison view"""
     st.header("🔄 Conversation Comparison")
 
-    render_shareable_link(metadata1, metadata2)
-    
     tool_stats1, tool_stats2 = render_stats_comparison(messages1, messages2)
-    
+
     render_tool_usage_comparison(tool_stats1, tool_stats2, messages1, messages2)
-    
+
     render_tool_sequence_comparison(tool_stats1, tool_stats2)
-    
+
     render_system_messages_comparison(messages1, messages2)

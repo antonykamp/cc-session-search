@@ -38,7 +38,6 @@ def render_session_selector(searcher: SessionSearcher, key_suffix: str) -> Optio
     default_project_idx = 0
     if url_project and url_project in project_names:
         default_project_idx = project_names.index(url_project)
-        st.info(f"📎 Loaded from link: {projects[default_project_idx]['decoded_name']}")
 
     selected_idx = st.selectbox(
         f"Select Project {key_suffix}",
@@ -66,7 +65,6 @@ def render_session_selector(searcher: SessionSearcher, key_suffix: str) -> Optio
     session_ids = [s['session_id'] for s in sessions]
     if url_session and url_session in session_ids:
         default_session_idx = session_ids.index(url_session)
-        st.success(f"📎 Session loaded from link")
 
     session_idx = st.selectbox(
         f"Select Session {key_suffix}",

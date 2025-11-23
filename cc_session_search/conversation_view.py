@@ -4,7 +4,6 @@ Conversation view component for displaying session details
 
 import streamlit as st
 import json
-import urllib.parse
 from typing import List
 
 from cc_session_search.core.conversation_parser import ParsedMessage, ConversationMetadata
@@ -77,20 +76,8 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
             st.write(f"**Git Branch:** {metadata.git_branch or 'N/A'}")
             st.write(f"**Working Dir:** {metadata.working_directory or 'N/A'}")
 
-        # Copy link section
+        # Local file path
         st.divider()
-        st.markdown("**📎 Share This Session:**")
-
-        params = {
-            f'project{key_suffix}': metadata.project_name,
-            f'session{key_suffix}': metadata.session_id
-        }
-        query_string = urllib.parse.urlencode(params)
-        shareable_link = f"?{query_string}"
-
-        st.code(shareable_link, language=None)
-        st.caption("📋 Copy and append to your dashboard URL to link directly to this session")
-
         with st.expander("🗂️ Local File Path", expanded=False):
             st.code(metadata.file_path, language="bash")
 
