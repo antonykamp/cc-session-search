@@ -451,17 +451,16 @@ def render_message_content(msg: ParsedMessage, is_thinking: bool, is_tool_call: 
     elif msg.role == 'tool':
         st.markdown(f'<div style="padding: 10px;">{content_preview}</div>', unsafe_allow_html=True)
         
-        with st.expander("📦 Tool Result Details", expanded=False):
-            st.markdown("**Full Tool Result:**")
-            try:
-                parsed_json = json.loads(msg.content)
-                st.json(parsed_json)
-            except Exception:
-                st.code(msg.content, language='text')
-            
+        with st.expander("📦 Tool Result Details", expanded=False):            
             if msg.tool_uses:
-                st.markdown("**Metadata:**")
                 st.json(msg.tool_uses)
+            else:
+                try:
+                    parsed_json = json.loads(msg.content)
+                    st.json(parsed_json)
+                except Exception:
+                    st.code(msg.content, language='text')
+
     else:
         if len(msg.content) > max_content_length:
             st.markdown(f'<div style="padding: 10px;">{content_preview}</div>', unsafe_allow_html=True)
