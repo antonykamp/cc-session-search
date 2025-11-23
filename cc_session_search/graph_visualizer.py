@@ -17,92 +17,52 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
 
     Returns a dictionary with nodes and edges suitable for visualization.
     """
+    from cc_session_search.dashboard_utils import get_message_type
+
     nodes = []
     edges = []
 
-    # Track tool call relationships
-    tool_call_map = {}  # message_index -> tool_result_index
+    # Map original index to node index (accounting for filtered messages)
+    original_to_node_idx = {}
+    node_idx = 0
 
-    for idx, msg in enumerate(messages):
-        # Determine message subtype for better visualization
-        is_thinking = '[Thinking:' in msg.content
-        is_tool_call = '[Calling tool:' in msg.content
-        is_mcp_call = False
-        is_skill_call = False
-        is_meta = False
-        skill_name = None
-        mcp_tool_name = None
+    for original_idx, msg in enumerate(messages):
+        # Use unified message type detection (pass all messages for proper categorization)
+        display_type = get_message_type(msg, messages)
 
-        # Check for meta messages (takes priority - separate from skill context)
-        if msg.metadata:
-            is_meta = msg.metadata.get('is_meta', False)
-
-        # Check if this is an MCP tool call, skill call, or skill read
-        is_skill_read = False
-        if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
-            is_tool_call = True  # Ensure flag is set even if text marker is missing
-            for tool_call in msg.tool_uses['tool_calls']:
-                tool_name = tool_call.get('name', '')
-                if tool_name.startswith('mcp__'):
-                    is_mcp_call = True
-                    mcp_tool_name = tool_name.replace('mcp__', '').replace('__', ' → ')
-                elif tool_name == 'Skill':
-                    is_skill_call = True
-                    tool_input = tool_call.get('input', {})
-                    skill_name = tool_input.get('skill', 'unknown')
-                elif tool_name == 'Read':
-                    # Check if reading from .claude/skills folder
-                    tool_input = tool_call.get('input', {})
-                    file_path = tool_input.get('file_path', '')
-                    if '.claude/skills' in file_path:
-                        is_skill_read = True
-
-        # Determine display type for coloring
-        # Meta messages separate from skill context
-        if is_meta:
-            display_type = 'meta'
-        elif is_skill_call or is_skill_read:
-            display_type = 'skill_context'
-        elif msg.role == 'assistant':
-            if is_thinking:
-                display_type = 'assistant_thinking'
-            elif is_mcp_call:
-                display_type = 'assistant_mcp_call'
-            elif is_tool_call:
-                display_type = 'assistant_tool_call'
-            else:
-                display_type = 'assistant_text'
-        else:
-            display_type = msg.role
+        # Skip file history snapshots
+        if display_type == 'file-history-snapshot':
+            continue
 
         # Create node for each message
         node = {
-            'id': idx,
+            'id': node_idx,
+            'original_idx': original_idx,
             'role': msg.role,
             'display_type': display_type,
             'timestamp': msg.timestamp.isoformat() if msg.timestamp else None,
             'content_length': len(msg.content),
             'has_tool_use': msg.tool_uses is not None,
-            'label': f"{msg.role}_{idx}",
-            'is_thinking': is_thinking,
-            'is_tool_call': is_tool_call,
-            'skill_name': skill_name,
-            'mcp_tool_name': mcp_tool_name
+            'label': f"{display_type}_{node_idx}"
         }
         nodes.append(node)
+        original_to_node_idx[original_idx] = node_idx
 
-        # Create edge to previous message (conversation flow)
-        if idx > 0:
+        # Create edge to previous node (conversation flow)
+        if node_idx > 0:
             edges.append({
-                'source': idx - 1,
-                'target': idx,
+                'source': node_idx - 1,
+                'target': node_idx,
                 'type': 'flow',
                 'label': 'next'
             })
 
+        node_idx += 1
+
     return {
         'nodes': nodes,
-        'edges': edges
+        'edges': edges,
+        'original_to_node_idx': original_to_node_idx
     }
 
 
@@ -119,17 +79,39 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
     positions = {}
     y_spacing = 30  # Tighter vertical spacing for sequence diagram
 
-    # Horizontal lanes for different message types
+    # Horizontal lanes for different message types (columns)
+    # Columns: User | Assistant | Basic Tools | Tool Results | Meta | MCP | Skill | Subagent
     x_positions = {
-        'user': 50,
-        'assistant_text': 150,
-        'assistant_thinking': 150,
-        'assistant_tool_call': 250,
-        'skill_context': 300,
-        'meta': 350,
-        'assistant_mcp_call': 400,
-        'tool': 500,
-        'file-history-snapshot': 600
+        # User column
+        'user': 0,
+
+        # Assistant column (thinking and text same position)
+        'assistant_text': 100,
+        'assistant_thinking': 100,
+
+        # Basic tool calls column
+        'basic_tool_call': 200,
+
+        # Tool results column (next to basic tools, all results here, colored by executor)
+        'basic_tool_result': 300,
+        'mcp_result': 300,
+        'skill_result': 300,
+        'subagent_result': 300,
+
+        # Meta column
+        'meta': 400,
+
+        # MCP calls column (list, read, tool all same color/position)
+        'mcp_list': 500,
+        'mcp_read': 500,
+        'mcp_tool': 500,
+
+        # Skill calls column (execute and read same position)
+        'skill_execute': 600,
+        'skill_read': 600,
+
+        # Subagent calls column
+        'subagent_call': 700
     }
 
     # Position nodes chronologically (top to bottom)
@@ -144,18 +126,20 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
 
         positions[node['id']] = (x, y)
 
-    # Build tool call to tool result mapping
-    tool_call_map = {}  # tool_use_id -> (tool_call_idx, tool_result_idx)
+    # Build tool call to tool result mapping using original indices
+    tool_call_map = {}  # tool_use_id -> (tool_call_node_idx, tool_result_node_idx)
+    original_to_node_idx = graph_data['original_to_node_idx']
 
-    for idx, node in enumerate(nodes):
-        msg = messages[idx]
+    for node in nodes:
+        original_idx = node['original_idx']
+        msg = messages[original_idx]
 
         # If this is a tool call, record it
         if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
             for tool_call in msg.tool_uses['tool_calls']:
                 tool_id = tool_call.get('id')
                 if tool_id:
-                    tool_call_map[tool_id] = {'call_idx': idx, 'result_idx': None}
+                    tool_call_map[tool_id] = {'call_idx': node['id'], 'result_idx': None}
 
         # If this is a tool result, match it by tool_use_id
         elif msg.role == 'tool' and msg.tool_uses:
@@ -163,7 +147,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
             if isinstance(msg.tool_uses, dict) and 'tool_use_id' in msg.tool_uses:
                 tool_id = msg.tool_uses['tool_use_id']
                 if tool_id in tool_call_map:
-                    tool_call_map[tool_id]['result_idx'] = idx
+                    tool_call_map[tool_id]['result_idx'] = node['id']
 
     # Create edge traces - temporal flow
     flow_edge_x = []
@@ -213,38 +197,57 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         name='Tool Call → Result'
     )
 
-    # Create node traces (one per display type for coloring)
-    display_type_colors = {
-        'user': ('#3498db', 'User'),
-        'assistant_text': ('#2ecc71', 'Assistant (Text)'),
-        'assistant_thinking': ('#1abc9c', 'Assistant (Thinking)'),
-        'skill_context': ('#9b59b6', 'Skill Context'),
-        'meta': ('#e91e63', 'Meta'),
-        'assistant_mcp_call': ('#8e44ad', 'MCP Tool Call'),
-        'assistant_tool_call': ('#e67e22', 'Assistant (Tool Call)'),
-        'tool': ('#f39c12', 'Tool Result'),
-        'system': ('#e74c3c', 'System'),
-        'file-history-snapshot': ('#95a5a6', 'File History')
-    }
+    # Import color mapping
+    from cc_session_search.dashboard_utils import MESSAGE_TYPE_INFO, MESSAGE_TYPE_LABELS
 
+    # Create node traces (one per display type for coloring)
     node_traces = []
 
-    for display_type, (color, label) in display_type_colors.items():
-        type_nodes = [n for n in nodes if n.get('display_type', n['role']) == display_type]
+    # Get unique display types from nodes
+    unique_types = set(n.get('display_type') for n in nodes)
+
+    # Order legend by connecting related nodes (calls with their results)
+    legend_order = [
+        'user',
+        'assistant_text',
+        'assistant_thinking',
+        'basic_tool_call',
+        'basic_tool_result',
+        'mcp_list',
+        'mcp_read',
+        'mcp_tool',
+        'mcp_result',
+        'skill_execute',
+        'skill_read',
+        'skill_result',
+        'subagent_call',
+        'subagent_result',
+        'meta'
+    ]
+
+    # Process types in legend order
+    for display_type in legend_order:
+        if display_type not in unique_types:
+            continue
+
+        # Get color and label from MESSAGE_TYPE_INFO
+        if display_type in MESSAGE_TYPE_INFO:
+            icon, color, base_label = MESSAGE_TYPE_INFO[display_type]
+            label = MESSAGE_TYPE_LABELS.get(display_type, base_label)
+        else:
+            color, label = '#95a5a6', display_type.upper()
+
+        type_nodes = [n for n in nodes if n.get('display_type') == display_type]
 
         if not type_nodes:
             continue
 
         node_x = [positions[n['id']][0] for n in type_nodes]
         node_y = [positions[n['id']][1] for n in type_nodes]
-        
+
         node_text = []
         for n in type_nodes:
             text = f"[{n['id']}] {label}<br>Length: {n['content_length']} chars"
-            if n.get('skill_name'):
-                text += f"<br><b>Skill: {n['skill_name']}</b>"
-            if n.get('mcp_tool_name'):
-                text += f"<br><b>MCP Tool: {n['mcp_tool_name']}</b>"
             node_text.append(text)
 
         trace = go.Scatter(
@@ -272,15 +275,16 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
     max_y = 0
 
     # Define axis ticks explicitly to ensure correct ordering
+    # Columns: User | Assistant | Basic Tools | Tool Results | Meta | MCP | Skill | Subagent
     axis_ticks = [
-        (50, 'User'),
-        (150, 'Assistant'),
-        (250, 'Tool Call'),
-        (300, 'Skill'),
-        (350, 'Meta'),
-        (400, 'MCP'),
-        (500, 'Tool Result'),
-        (600, 'File History')
+        (0, 'User'),
+        (100, 'Assistant'),
+        (200, 'Basic Tools'),
+        (300, 'Tool Results'),
+        (400, 'Meta'),
+        (500, 'MCP'),
+        (600, 'Skill'),
+        (700, 'Subagent')
     ]
     tick_vals = [t[0] for t in axis_ticks]
     tick_text = [t[1] for t in axis_ticks]

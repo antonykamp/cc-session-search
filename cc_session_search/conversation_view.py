@@ -9,7 +9,6 @@ from typing import List
 from cc_session_search.core.conversation_parser import ParsedMessage, ConversationMetadata
 from cc_session_search.dashboard_utils import (
     extract_tool_calls,
-    extract_system_messages,
     get_tool_usage_stats,
     get_message_type,
     build_tool_call_mapping,
@@ -199,18 +198,6 @@ def render_tool_usage_section(messages: List[ParsedMessage]):
             st.info("No tool calls in this conversation")
 
 
-def render_system_messages_section(messages: List[ParsedMessage]):
-    """Render system messages section"""
-    system_msgs = extract_system_messages(messages)
-    
-    with st.expander(f"⚙️ System Messages ({len(system_msgs)})", expanded=False):
-        if system_msgs:
-            for msg in system_msgs:
-                st.text(f"[{msg['message_index']}] {msg['content']}")
-        else:
-            st.info("No system messages found")
-
-
 def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
     """Render the interactive message browser"""
     with st.expander(f"💬 Messages Browser ({len(messages)} messages)", expanded=False):
@@ -232,36 +219,56 @@ def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
         # Get unique message types with counts
         type_counts = {}
         for msg in messages:
-            msg_type = get_message_type(msg)
-            type_counts[msg_type] = type_counts.get(msg_type, 0) + 1
+            msg_type = get_message_type(msg, messages)
+            if msg_type != 'file-history-snapshot':  # Ignore file history
+                type_counts[msg_type] = type_counts.get(msg_type, 0) + 1
 
-        # Create filter labels with counts
-        present_type_labels = []
-        for msg_type, count in sorted(type_counts.items(), key=lambda x: x[1], reverse=True):
-            if msg_type in MESSAGE_TYPE_LABELS:
-                label = f"{MESSAGE_TYPE_LABELS[msg_type]} ({count})"
-                present_type_labels.append(label)
+        # Define hierarchical filter groups
+        filter_groups = {
+            'User': ['user'],
+            'Assistant': ['assistant_text', 'assistant_thinking'],
+            'All Tools': [
+                'basic_tool_call', 'basic_tool_result',
+                'mcp_list', 'mcp_read', 'mcp_tool', 'mcp_result',
+                'skill_execute', 'skill_read', 'skill_result',
+                'subagent_call', 'subagent_result'
+            ],
+            'Meta': ['meta'],
+            '  → MCP Only': ['mcp_list', 'mcp_read', 'mcp_tool', 'mcp_result'],
+            '  → Skills Only': ['skill_execute', 'skill_read', 'skill_result'],
+            '  → Subagents Only': ['subagent_call', 'subagent_result']
+        }
 
-        # Message type filter
-        selected_type_labels = st.multiselect(
-            "Filter by message type (click to select/deselect)",
-            present_type_labels,
-            default=present_type_labels,
-            key=f"type_filter_{key_suffix}"
+        # Create filter options with counts
+        filter_options = []
+        filter_type_mapping = {}  # Maps display label to list of message types
+
+        for group_name, msg_types in filter_groups.items():
+            # Count messages in this group
+            count = sum(type_counts.get(mt, 0) for mt in msg_types)
+            if count > 0:
+                label = f"{group_name} ({count})"
+                filter_options.append(label)
+                filter_type_mapping[label] = msg_types
+
+        # Message type filter with hierarchical groups
+        selected_filters = st.multiselect(
+            "Filter by message type",
+            filter_options,
+            default=[opt for opt in filter_options if not opt.startswith('  →')],  # Default: all except subgroups
+            key=f"type_filter_{key_suffix}",
+            help="Main categories select all messages. Subgroups (→) allow filtering specific tool types."
         )
 
-        # Parse selected types from labels
-        label_to_type = {v: k for k, v in MESSAGE_TYPE_LABELS.items()}
-        selected_types = []
-        for label in selected_type_labels:
-            base_label = label.rsplit(' (', 1)[0]
-            if base_label in label_to_type:
-                selected_types.append(label_to_type[base_label])
+        # Build selected types from hierarchical selection
+        selected_types = set()
+        for filter_label in selected_filters:
+            selected_types.update(filter_type_mapping[filter_label])
 
         # Filter messages with original indices
         filtered_messages_with_idx = [
             (idx, msg) for idx, msg in enumerate(messages)
-            if get_message_type(msg) in selected_types
+            if get_message_type(msg, messages) in selected_types
         ]
 
         # Show filter summary
@@ -299,74 +306,80 @@ def render_single_message(
     tool_id_to_result: dict
 ):
     """Render a single message with all its details"""
+    from cc_session_search.dashboard_utils import get_message_type, MESSAGE_TYPE_INFO
+
     timestamp_str = msg.timestamp.strftime('%H:%M:%S') if msg.timestamp else 'N/A'
 
-    # Determine message type
-    is_thinking = '[Thinking:' in msg.content
-    is_tool_call = '[Calling tool:' in msg.content or (msg.role == 'assistant' and msg.tool_uses and ('tool_calls' in msg.tool_uses or 'tool_name' in msg.tool_uses))
-    has_system_reminder = '<system-reminder>' in msg.content.lower()
+    # Get message type (pass all_messages for proper tool result categorization)
+    msg_type = get_message_type(msg, all_messages)
 
-    # Check for tool call and result mappings
+    # Skip file history snapshots
+    if msg_type == 'file-history-snapshot':
+        return
+
+    # Extract details for labeling
+    tool_detail = None
     tool_result_idx = None
-    is_mcp_call = False
-    is_skill_call = False
-    is_skill_read = False
-    is_subagent_call = False
-    mcp_tool_name = None
-    skill_name = None
-    subagent_type = None
-    subagent_id = None
+    matching_call_idx = None
 
+    # For tool calls, extract tool-specific details
     if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
         for tool_call in msg.tool_uses['tool_calls']:
             tool_id = tool_call.get('id', '')
             tool_name = tool_call.get('name', '')
+            tool_input = tool_call.get('input', {})
 
-            if tool_name.startswith('mcp__'):
-                is_mcp_call = True
-                mcp_tool_name = tool_name.replace('mcp__', '').replace('__', ' → ')
-            elif tool_name == 'Task':
-                is_subagent_call = True
-                # Extract subagent type from the prompt/description
-                tool_input = tool_call.get('input', {})
-                subagent_type = tool_input.get('subagent_type', 'Unknown')
-            elif tool_name == 'Skill':
-                is_skill_call = True
-                # Extract skill name from input
-                tool_input = tool_call.get('input', {})
-                skill_name = tool_input.get('skill', 'unknown')
-            elif tool_name == 'Read':
-                # Check if reading from .claude/skills folder
-                tool_input = tool_call.get('input', {})
-                file_path = tool_input.get('file_path', '')
-                if '.claude/skills' in file_path:
-                    is_skill_read = True
+            # Extract specific details based on tool type
+            if msg_type == 'subagent_call':
+                tool_detail = tool_input.get('subagent_type', 'Unknown')
+            elif msg_type in ('mcp_list', 'mcp_read', 'mcp_tool'):
+                tool_detail = tool_name.replace('mcp__', '').replace('__', ' → ')
+            elif msg_type == 'skill_execute':
+                tool_detail = tool_input.get('skill', 'unknown')
+            elif msg_type == 'skill_read':
+                tool_detail = tool_input.get('file_path', '')
+            elif msg_type == 'basic_tool_call':
+                tool_detail = tool_name
 
+            # Find result index
             if tool_id and tool_id in tool_id_to_result:
                 tool_result_idx = tool_id_to_result[tool_id]
+            break
 
-    # Check if tool result
-    matching_call_idx = None
-    matching_call_id = None
-    is_subagent_result = False
+    # For tool results, find matching call
     if msg.role == 'tool' and msg.tool_uses:
-        # Check for subagent result
-        if 'agentId' in msg.tool_uses:
-            is_subagent_result = True
-            subagent_id = msg.tool_uses.get('agentId', 'unknown')
-
         if isinstance(msg.tool_uses, dict) and 'tool_use_id' in msg.tool_uses:
             matching_call_id = msg.tool_uses['tool_use_id']
             if matching_call_id in tool_id_to_call:
                 matching_call_idx = tool_id_to_call[matching_call_id]
 
-    # Get styling based on message type
-    icon, color, label = get_message_styling(
-        msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call, is_skill_read,
-        is_subagent_call, is_subagent_result,
-        mcp_tool_name, skill_name, subagent_type, subagent_id,
-        tool_result_idx, matching_call_idx, matching_call_id, has_system_reminder
-    )
+        # Extract agent ID for subagent results
+        if msg_type == 'subagent_result':
+            tool_detail = msg.tool_uses.get('agentId', 'unknown')
+
+    # Get styling from MESSAGE_TYPE_INFO
+    icon, color, base_label = MESSAGE_TYPE_INFO.get(msg_type, ('📄', '#95a5a6', 'UNKNOWN'))
+
+    # Build label with details
+    label = base_label
+    if tool_detail:
+        if msg_type in ('subagent_call', 'skill_execute', 'basic_tool_call'):
+            label = f"{base_label}: {tool_detail}"
+        elif msg_type in ('mcp_list', 'mcp_read', 'mcp_tool'):
+            label = f"{base_label}: {tool_detail}"
+        elif msg_type == 'skill_read':
+            # Show just filename for skill read
+            import os
+            filename = os.path.basename(tool_detail) if tool_detail else 'unknown'
+            label = f"{base_label}: {filename}"
+        elif msg_type == 'subagent_result':
+            label = f"{base_label} (Agent: {tool_detail})"
+
+    # Add result/call links
+    if tool_result_idx is not None:
+        label += f" → Result at [{tool_result_idx}]"
+    if matching_call_idx is not None:
+        label += f" ← Called from [{matching_call_idx}]"
 
     # Format cost display
     cost_display = ""
@@ -384,78 +397,11 @@ def render_single_message(
     )
 
     # Display message content
+    is_thinking = msg_type == 'assistant_thinking'
+    is_tool_call = msg_type in ('basic_tool_call', 'mcp_list', 'mcp_read', 'mcp_tool', 'skill_execute', 'skill_read', 'subagent_call')
     render_message_content(msg, is_thinking, is_tool_call)
 
     st.divider()
-
-
-def get_message_styling(
-    msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call, is_skill_read,
-    is_subagent_call, is_subagent_result,
-    mcp_tool_name, skill_name, subagent_type, subagent_id,
-    tool_result_idx, matching_call_idx, matching_call_id, has_system_reminder
-):
-    """Determine icon, color, and label for a message"""
-    # Check for meta messages first (takes priority - separate from skill context)
-    is_meta = msg.metadata.get('is_meta', False) if msg.metadata else False
-    if is_meta:
-        icon, color, label = "🏷️", "#e91e63", "META"
-    # Handle subagent results
-    elif is_subagent_result:
-        icon = "🤖✅"
-        color = "#a29bfe"
-        label = f"SUBAGENT RESULT (Agent: {subagent_id})"
-        if matching_call_idx is not None:
-            label += f" ← Called from [{matching_call_idx}]"
-    # Handle skill calls and skill reads
-    elif is_skill_call or is_skill_read:
-        icon = "🎯"
-        color = "#9b59b6"
-        if is_skill_call:
-            label = f"SKILL CALL: {skill_name}"
-        else:  # is_skill_read
-            label = "SKILL CONTEXT READ"
-
-        if tool_result_idx is not None:
-            label += f" → Result at [{tool_result_idx}]"
-    elif msg.role == 'user':
-        icon, color, label = "👤", "#3498db", "USER"
-    elif msg.role == 'assistant':
-        if is_thinking:
-            icon, color, label = "🧠", "#1abc9c", "ASSISTANT (THINKING)"
-        elif is_tool_call:
-            if is_subagent_call:
-                icon = "🤖🔗"
-                color = "#6c5ce7"
-                label = f"SUBAGENT CALL: {subagent_type}"
-                if tool_result_idx is not None:
-                    label += f" → Result at [{tool_result_idx}]"
-            elif is_mcp_call:
-                icon = "🔌"
-                color = "#8e44ad"
-                label = f"MCP TOOL CALL: {mcp_tool_name}"
-                if tool_result_idx is not None:
-                    label += f" → Result at [{tool_result_idx}]"
-            else:
-                icon, color, label = "⚡", "#e67e22", "ASSISTANT (TOOL CALL)"
-                if tool_result_idx is not None:
-                    label += f" → Result at [{tool_result_idx}]"
-        else:
-            icon, color, label = "🤖", "#2ecc71", "ASSISTANT"
-    elif msg.role == 'tool':
-        icon, color, label = "🔧", "#f39c12", "TOOL RESULT"
-        if matching_call_idx is not None:
-            label += f" ← Called from [{matching_call_idx}]"
-        elif matching_call_id:
-            label += f" (ID: {matching_call_id[:12]}...)"
-    else:
-        icon, color, label = "📄", "#95a5a6", msg.role.upper()
-
-    if has_system_reminder:
-        icon = "⚠️"
-        label += " (SYSTEM)"
-
-    return icon, color, label
 
 
 def render_message_content(msg: ParsedMessage, is_thinking: bool, is_tool_call: bool):
@@ -548,6 +494,5 @@ def render_conversation_view(metadata: ConversationMetadata, messages: List[Pars
     render_metadata_section(metadata, messages, key_suffix)
     render_tool_usage_section(messages)
     render_subagent_section(metadata, key_suffix)
-    render_system_messages_section(messages)
     render_message_browser(messages, key_suffix)
     render_visualizations(messages, metadata)
