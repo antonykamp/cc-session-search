@@ -33,11 +33,12 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
         skill_name = None
         mcp_tool_name = None
 
-        # Check for meta messages
+        # Check for meta messages (takes priority - separate from skill context)
         if msg.metadata:
             is_meta = msg.metadata.get('is_meta', False)
 
-        # Check if this is an MCP tool call or skill call
+        # Check if this is an MCP tool call, skill call, or skill read
+        is_skill_read = False
         if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
             is_tool_call = True  # Ensure flag is set even if text marker is missing
             for tool_call in msg.tool_uses['tool_calls']:
@@ -49,15 +50,22 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
                     is_skill_call = True
                     tool_input = tool_call.get('input', {})
                     skill_name = tool_input.get('skill', 'unknown')
+                elif tool_name == 'Read':
+                    # Check if reading from .claude/skills folder
+                    tool_input = tool_call.get('input', {})
+                    file_path = tool_input.get('file_path', '')
+                    if '.claude/skills' in file_path:
+                        is_skill_read = True
 
         # Determine display type for coloring
+        # Meta messages separate from skill context
         if is_meta:
             display_type = 'meta'
+        elif is_skill_call or is_skill_read:
+            display_type = 'skill_context'
         elif msg.role == 'assistant':
             if is_thinking:
                 display_type = 'assistant_thinking'
-            elif is_skill_call:
-                display_type = 'assistant_skill_call'
             elif is_mcp_call:
                 display_type = 'assistant_mcp_call'
             elif is_tool_call:
@@ -117,11 +125,11 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'assistant_text': 150,
         'assistant_thinking': 150,
         'assistant_tool_call': 250,
-        'assistant_skill_call': 300,
-        'assistant_mcp_call': 350,
-        'tool': 450,
-        'meta': 550,
-        'file-history-snapshot': 650
+        'skill_context': 300,
+        'meta': 350,
+        'assistant_mcp_call': 400,
+        'tool': 500,
+        'file-history-snapshot': 600
     }
 
     # Position nodes chronologically (top to bottom)
@@ -210,11 +218,11 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         'user': ('#3498db', 'User'),
         'assistant_text': ('#2ecc71', 'Assistant (Text)'),
         'assistant_thinking': ('#1abc9c', 'Assistant (Thinking)'),
-        'assistant_skill_call': ('#9b59b6', 'Skill Call'),
+        'skill_context': ('#9b59b6', 'Skill Context'),
+        'meta': ('#e91e63', 'Meta'),
         'assistant_mcp_call': ('#8e44ad', 'MCP Tool Call'),
         'assistant_tool_call': ('#e67e22', 'Assistant (Tool Call)'),
         'tool': ('#f39c12', 'Tool Result'),
-        'meta': ('#e91e63', 'Meta'),
         'system': ('#e74c3c', 'System'),
         'file-history-snapshot': ('#95a5a6', 'File History')
     }
@@ -269,10 +277,10 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
         (150, 'Assistant'),
         (250, 'Tool Call'),
         (300, 'Skill'),
-        (350, 'MCP'),
-        (450, 'Tool Result'),
-        (550, 'Meta'),
-        (650, 'File History')
+        (350, 'Meta'),
+        (400, 'MCP'),
+        (500, 'Tool Result'),
+        (600, 'File History')
     ]
     tick_vals = [t[0] for t in axis_ticks]
     tick_text = [t[1] for t in axis_ticks]

@@ -118,11 +118,11 @@ def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
         - 👤 **User** (Blue) - User input messages
         - 🤖 **Assistant** (Green) - Regular assistant responses
         - 🧠 **Assistant Thinking** (Teal) - Internal reasoning/planning
-        - 🎯 **Skill Call** (Purple) - Claude Code skill invocation
+        - 🎯 **Skill Context** (Purple) - Skill calls and skill file reads
+        - 🏷️ **Meta** (Pink) - Meta messages (caveats, system notes)
         - 🔌 **MCP Tool Call** (Deep Purple) - External MCP server tool invocation
         - ⚡ **Assistant Tool Call** (Orange) - Built-in tool invocation
         - 🔧 **Tool Result** (Amber) - Tool execution results
-        - 🏷️ **Meta** (Pink) - Meta messages (caveats, system notes)
         - ⚠️ **System** - Messages with system reminders
         """)
         st.divider()
@@ -208,6 +208,7 @@ def render_single_message(
     tool_result_idx = None
     is_mcp_call = False
     is_skill_call = False
+    is_skill_read = False
     mcp_tool_name = None
     skill_name = None
 
@@ -224,6 +225,12 @@ def render_single_message(
                 # Extract skill name from input
                 tool_input = tool_call.get('input', {})
                 skill_name = tool_input.get('skill', 'unknown')
+            elif tool_name == 'Read':
+                # Check if reading from .claude/skills folder
+                tool_input = tool_call.get('input', {})
+                file_path = tool_input.get('file_path', '')
+                if '.claude/skills' in file_path:
+                    is_skill_read = True
 
             if tool_id and tool_id in tool_id_to_result:
                 tool_result_idx = tool_id_to_result[tool_id]
@@ -239,7 +246,7 @@ def render_single_message(
 
     # Get styling based on message type
     icon, color, label = get_message_styling(
-        msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call,
+        msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call, is_skill_read,
         mcp_tool_name, skill_name, tool_result_idx, matching_call_idx,
         matching_call_id, has_system_reminder
     )
@@ -266,32 +273,39 @@ def render_single_message(
 
 
 def get_message_styling(
-    msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call,
+    msg, is_thinking, is_tool_call, is_mcp_call, is_skill_call, is_skill_read,
     mcp_tool_name, skill_name, tool_result_idx, matching_call_idx,
     matching_call_id, has_system_reminder
 ):
     """Determine icon, color, and label for a message"""
-    # Check for meta messages first (takes priority over role)
+    # Check for meta messages first (takes priority - separate from skill context)
     is_meta = msg.metadata.get('is_meta', False) if msg.metadata else False
     if is_meta:
         icon, color, label = "🏷️", "#e91e63", "META"
+    # Handle skill calls and skill reads
+    elif is_skill_call or is_skill_read:
+        icon = "🎯"
+        color = "#9b59b6"
+        if is_skill_call:
+            label = f"SKILL CALL: {skill_name}"
+        else:  # is_skill_read
+            label = "SKILL CONTEXT READ"
+
+        if tool_result_idx is not None:
+            label += f" → Result at [{tool_result_idx}]"
     elif msg.role == 'user':
         icon, color, label = "👤", "#3498db", "USER"
     elif msg.role == 'assistant':
         if is_thinking:
             icon, color, label = "🧠", "#1abc9c", "ASSISTANT (THINKING)"
         elif is_tool_call:
-            if is_skill_call:
-                icon = "🎯"
-                color = "#9b59b6"
-                label = f"SKILL CALL: {skill_name}"
-            elif is_mcp_call:
+            if is_mcp_call:
                 icon = "🔌"
                 color = "#8e44ad"
                 label = f"MCP TOOL CALL: {mcp_tool_name}"
             else:
                 icon, color, label = "⚡", "#e67e22", "ASSISTANT (TOOL CALL)"
-            
+
             if tool_result_idx is not None:
                 label += f" → Result at [{tool_result_idx}]"
         else:
