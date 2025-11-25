@@ -8,7 +8,7 @@ message processing, and tool use analysis.
 import json
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass
 from uuid import uuid4
@@ -484,8 +484,8 @@ class JSONLParser:
         if not messages:
             return messages
 
-        # Get file modification time as fallback
-        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+        # Get file modification time as fallback (make it timezone-aware UTC)
+        file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime, tz=timezone.utc)
 
         for i, msg in enumerate(messages):
             if msg.timestamp is None:
