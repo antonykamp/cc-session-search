@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any, Union
 from dataclasses import dataclass
 from uuid import uuid4
-import tiktoken
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +38,10 @@ class ParsedMessage:
     metadata: Dict[str, Any]
     token_count: int = 0
     cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
 
 
 @dataclass
@@ -71,41 +74,6 @@ class JSONLParser:
 
     def __init__(self):
         self.logger = logging.getLogger(__name__)
-        # Use cl100k_base encoding (used by GPT-4 and similar models)
-        # This is a good approximation for Claude tokens
-        try:
-            self.encoding = tiktoken.get_encoding("cl100k_base")
-        except Exception as e:
-            self.logger.warning(f"Could not load tiktoken encoding: {e}")
-            self.encoding = None
-
-    def _count_tokens(self, text: str) -> int:
-        """Count tokens in a text string using tiktoken."""
-        if not self.encoding:
-            # Fallback: rough estimate of 4 characters per token
-            return len(text) // 4
-        try:
-            return len(self.encoding.encode(text))
-        except Exception as e:
-            self.logger.debug(f"Token counting failed: {e}")
-            return len(text) // 4
-
-    def _calculate_cost(self, token_count: int, model: str, token_type: str) -> float:
-        """
-        Calculate cost in USD for a given number of tokens.
-
-        Args:
-            token_count: Number of tokens
-            model: Model name
-            token_type: 'input' or 'output'
-
-        Returns:
-            Cost in USD
-        """
-        # Get pricing for model (default to Sonnet 4.5 pricing if unknown)
-        pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING['claude-sonnet-4-5-20250929'])
-        cost_per_million = pricing.get(token_type, 3.00)  # Default to input pricing
-        return (token_count / 1_000_000) * cost_per_million
 
     def parse_conversation_file(self, file_path: Path) -> Tuple[ConversationMetadata, List[ParsedMessage]]:
         """
@@ -383,22 +351,55 @@ class JSONLParser:
             # Extract model for cost calculation
             model = message_data.get('model', 'claude-sonnet-4-5-20250929')  # Default to latest
 
+            # Extract actual token usage from API response
+            usage = message_data.get('usage', {})
+            input_tokens = usage.get('input_tokens', 0)
+            output_tokens = usage.get('output_tokens', 0)
+            cache_creation_tokens = usage.get('cache_creation_input_tokens', 0)
+            cache_read_tokens = usage.get('cache_read_input_tokens', 0)
+
             # Calculate tokens and cost
             token_count = 0
             cost_usd = 0.0
 
             try:
-                # Count tokens for the message content
-                token_count = self._count_tokens(content)
+                # Only assistant messages have usage data
+                # For assistant messages: input_tokens includes the preceding user message(s)
+                #                        output_tokens is the assistant's response
+                if role == 'assistant' and (input_tokens > 0 or output_tokens > 0):
+                    # For display purposes, show only the output tokens for assistant messages
+                    # The input tokens represent the user's input which is attributed to the assistant's API call
+                    token_count = output_tokens
 
-                # Calculate cost based on role
-                if role == 'user':
-                    # User messages are input tokens
-                    cost_usd = self._calculate_cost(token_count, model, 'input')
-                elif role == 'assistant':
-                    # Assistant messages are output tokens
-                    cost_usd = self._calculate_cost(token_count, model, 'output')
-                # tool and other roles don't incur direct costs
+                    # Calculate cost using actual input/output tokens
+                    # Note: Cache tokens have different pricing
+                    # - cache_read_tokens are cheaper (10% of normal input cost)
+                    # - cache_creation_tokens cost same as input but enable future cache reads
+                    pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING['claude-sonnet-4-5-20250929'])
+
+                    # Regular input tokens (includes preceding user messages)
+                    regular_input_tokens = input_tokens
+                    input_cost = (regular_input_tokens / 1_000_000) * pricing['input']
+
+                    # Output tokens (assistant's response)
+                    output_cost = (output_tokens / 1_000_000) * pricing['output']
+
+                    # Cache creation tokens (same as input)
+                    cache_creation_cost = (cache_creation_tokens / 1_000_000) * pricing['input']
+
+                    # Cache read tokens (90% discount)
+                    cache_read_cost = (cache_read_tokens / 1_000_000) * (pricing['input'] * 0.1)
+
+                    cost_usd = input_cost + output_cost + cache_creation_cost + cache_read_cost
+                else:
+                    # For user messages and tool responses, tokens are accounted for in the assistant's usage data
+                    # Set everything to 0 since these are included in the next assistant message
+                    token_count = 0
+                    cost_usd = 0.0
+                    input_tokens = 0
+                    output_tokens = 0
+                    cache_creation_tokens = 0
+                    cache_read_tokens = 0
             except Exception as e:
                 self.logger.debug(f"Could not calculate token cost: {e}")
 
@@ -419,7 +420,11 @@ class JSONLParser:
                 tool_uses=tool_uses,
                 metadata=msg_metadata,
                 token_count=token_count,
-                cost_usd=cost_usd
+                cost_usd=cost_usd,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cache_creation_tokens=cache_creation_tokens,
+                cache_read_tokens=cache_read_tokens
             )
 
         except Exception as e:
@@ -502,7 +507,13 @@ class JSONLParser:
                     content=msg.content,
                     timestamp=fallback_time,
                     tool_uses=msg.tool_uses,
-                    metadata=msg.metadata
+                    metadata=msg.metadata,
+                    token_count=msg.token_count,
+                    cost_usd=msg.cost_usd,
+                    input_tokens=msg.input_tokens,
+                    output_tokens=msg.output_tokens,
+                    cache_creation_tokens=msg.cache_creation_tokens,
+                    cache_read_tokens=msg.cache_read_tokens
                 )
 
         return messages

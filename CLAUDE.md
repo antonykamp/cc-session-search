@@ -80,8 +80,10 @@ uv run streamlit run cc_session_search/dashboard.py
   - Handles different message types: user, assistant, tool results, and summary messages
   - Auto-detects and reclassifies tool responses (originally role='user' with tool_result content blocks)
   - Fixes missing timestamps using subsequent message timestamps or file modification time
-  - Calculates token count and USD cost for each message using tokencost library
-  - Extracts model information from assistant messages for accurate pricing
+  - Extracts actual token usage from API responses (input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens)
+  - Calculates accurate USD cost using actual API token counts and Claude pricing
+  - Properly accounts for prompt caching costs (cache reads at 90% discount)
+  - Only assistant messages have usage data; user message tokens are included in the next assistant's input_tokens
 
 - `searcher.py`: Core search and session analysis functionality
   - `SessionSearcher`: Main search class
@@ -138,12 +140,21 @@ uv run streamlit run cc_session_search/dashboard.py
   - Each line is a JSON object representing a message or event
   - Messages have `type` field ('summary' or regular) and `message` field with role and content
   - Timestamps in ISO format, may be missing for first message
+  - Assistant messages include `usage` field with actual API token counts
 
 - **Message Roles**:
-  - `user`: Human input
-  - `assistant`: Claude's responses
+  - `user`: Human input (tokens counted in next assistant message's input_tokens)
+  - `assistant`: Claude's responses (includes usage data with input/output tokens)
   - `tool`: Tool execution results (auto-detected from tool_result content blocks or toolUseResult data)
   - `summary`: Conversation summaries
+
+- **Token Counting**:
+  - Only assistant messages have `usage` field from API responses
+  - `usage.input_tokens`: Includes the user's prompt + conversation context
+  - `usage.output_tokens`: The assistant's response tokens
+  - `usage.cache_creation_input_tokens`: Tokens written to prompt cache
+  - `usage.cache_read_input_tokens`: Tokens read from prompt cache (90% cheaper)
+  - User messages don't have usage data - their tokens are included in the next assistant's input_tokens
 
 ### Key Design Patterns
 
@@ -152,6 +163,8 @@ uv run streamlit run cc_session_search/dashboard.py
 3. **Role Detection**: Automatically reclassifies user messages containing tool results as 'tool' role
 4. **Timestamp Inference**: Fills missing timestamps using next message's timestamp or file modification time
 5. **Max Limits**: Days back limited to 7, message indices limited to 10, context window limited to 5
+6. **API-Based Token Counting**: Uses actual usage data from Claude API responses, not estimation
+7. **Cache-Aware Pricing**: Properly calculates costs for prompt caching with 90% discount on cache reads
 
 ## Testing
 
@@ -164,5 +177,6 @@ No formal test suite currently exists. Manual testing is done via CLI commands.
 - Streamlit 1.28.0+ for interactive dashboard
 - Plotly 5.17.0+ for interactive visualizations
 - Pandas 2.1.0+ for data manipulation
-- tokencost 0.1.0+ for token counting and cost calculation
 - `uv` package manager for dependency management
+
+Note: Token counting uses actual API usage data from conversation files, not estimation libraries.
