@@ -557,3 +557,158 @@ def create_comparison_chart(
     )
 
     return fig
+
+
+def create_token_burnup_chart(messages: List[ParsedMessage]) -> go.Figure:
+    """
+    Create a burn-up chart showing cumulative token usage over messages.
+
+    Shows cumulative totals for:
+    - Input tokens
+    - Output tokens
+    - Cache creation tokens
+    - Cache read tokens
+    - Total cost
+    """
+    # Only count assistant messages (which have usage data)
+    assistant_messages = [msg for msg in messages if msg.role == 'assistant']
+
+    if not assistant_messages:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No assistant messages with token data",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16)
+        )
+        fig.update_layout(height=400)
+        return fig
+
+    # Calculate cumulative values
+    cumulative_input = []
+    cumulative_output = []
+    cumulative_cache_creation = []
+    cumulative_cache_read = []
+    cumulative_cost = []
+    message_indices = []
+
+    total_input = 0
+    total_output = 0
+    total_cache_creation = 0
+    total_cache_read = 0
+    total_cost = 0.0
+
+    # Track which message index in the full conversation
+    for msg in messages:
+        if msg.role == 'assistant':
+            # Use getattr with default 0 for backward compatibility with old parsed messages
+            total_input += getattr(msg, 'input_tokens', 0)
+            total_output += getattr(msg, 'output_tokens', 0)
+            total_cache_creation += getattr(msg, 'cache_creation_tokens', 0)
+            total_cache_read += getattr(msg, 'cache_read_tokens', 0)
+            total_cost += getattr(msg, 'cost_usd', 0.0)
+
+            # Store cumulative values
+            cumulative_input.append(total_input)
+            cumulative_output.append(total_output)
+            cumulative_cache_creation.append(total_cache_creation)
+            cumulative_cache_read.append(total_cache_read)
+            cumulative_cost.append(total_cost)
+            message_indices.append(messages.index(msg))
+
+    # Create figure with secondary y-axis for cost
+    fig = go.Figure()
+
+    # Add token traces
+    fig.add_trace(go.Scatter(
+        x=message_indices,
+        y=cumulative_input,
+        mode='lines+markers',
+        name='Input Tokens',
+        line=dict(color='#3498db', width=2),
+        marker=dict(size=4),
+        hovertemplate='Message %{x}<br>Input: %{y:,.0f}<extra></extra>'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=message_indices,
+        y=cumulative_output,
+        mode='lines+markers',
+        name='Output Tokens',
+        line=dict(color='#2ecc71', width=2),
+        marker=dict(size=4),
+        hovertemplate='Message %{x}<br>Output: %{y:,.0f}<extra></extra>'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=message_indices,
+        y=cumulative_cache_creation,
+        mode='lines+markers',
+        name='Cache Creation',
+        line=dict(color='#e74c3c', width=2),
+        marker=dict(size=4),
+        hovertemplate='Message %{x}<br>Cache Creation: %{y:,.0f}<extra></extra>'
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=message_indices,
+        y=cumulative_cache_read,
+        mode='lines+markers',
+        name='Cache Read',
+        line=dict(color='#9b59b6', width=2),
+        marker=dict(size=4),
+        hovertemplate='Message %{x}<br>Cache Read: %{y:,.0f}<extra></extra>'
+    ))
+
+    # Add cost trace on secondary y-axis
+    fig.add_trace(go.Scatter(
+        x=message_indices,
+        y=cumulative_cost,
+        mode='lines+markers',
+        name='Cumulative Cost',
+        line=dict(color='#f39c12', width=3, dash='dot'),
+        marker=dict(size=6),
+        yaxis='y2',
+        hovertemplate='Message %{x}<br>Cost: $%{y:.4f}<extra></extra>'
+    ))
+
+    # Update layout with dual y-axes
+    fig.update_layout(
+        title=dict(
+            text="Token Usage Burn-up Chart",
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title="Message Index",
+            showgrid=True,
+            gridcolor='rgba(200,200,200,0.2)'
+        ),
+        yaxis=dict(
+            title="Cumulative Tokens",
+            showgrid=True,
+            gridcolor='rgba(200,200,200,0.2)',
+            side='left'
+        ),
+        yaxis2=dict(
+            title="Cumulative Cost (USD)",
+            overlaying='y',
+            side='right',
+            showgrid=False
+        ),
+        height=500,
+        hovermode='x unified',
+        legend=dict(
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=0.01,
+            bgcolor='rgba(128,128,128,0.15)',
+            bordercolor='rgba(128,128,128,0.4)',
+            borderwidth=1
+        ),
+        plot_bgcolor='rgba(250,250,250,0.5)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+
+    return fig

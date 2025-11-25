@@ -19,7 +19,8 @@ from cc_session_search.dashboard_utils import (
 from cc_session_search.graph_visualizer import (
     create_plotly_graph,
     create_tool_usage_chart,
-    create_message_timeline
+    create_message_timeline,
+    create_token_burnup_chart
 )
 
 
@@ -473,7 +474,7 @@ def render_message_content(msg: ParsedMessage, is_thinking: bool, is_tool_call: 
 def render_visualizations(messages: List[ParsedMessage], metadata: ConversationMetadata):
     """Render visualization section"""
     with st.expander(f"📈 Visualizations", expanded=True):
-        tab1, tab2, tab3 = st.tabs(["Conversation Flow", "Tool Usage", "Timeline"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Conversation Flow", "Tool Usage", "Timeline", "Token Burn-up"])
 
         with tab1:
             fig = create_plotly_graph(messages, f"Conversation Flow - {metadata.session_id[:20]}...")
@@ -486,6 +487,45 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
         with tab3:
             fig = create_message_timeline(messages)
             st.plotly_chart(fig, width='stretch')
+
+        with tab4:
+            fig = create_token_burnup_chart(messages)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Add summary statistics below the chart
+            assistant_msgs = [msg for msg in messages if msg.role == 'assistant']
+            if assistant_msgs:
+                st.markdown("---")
+                st.markdown("**📊 Token Usage Summary**")
+
+                # Use getattr for backward compatibility with old cached sessions
+                total_input = sum(getattr(msg, 'input_tokens', 0) for msg in assistant_msgs)
+                total_output = sum(getattr(msg, 'output_tokens', 0) for msg in assistant_msgs)
+                total_cache_creation = sum(getattr(msg, 'cache_creation_tokens', 0) for msg in assistant_msgs)
+                total_cache_read = sum(getattr(msg, 'cache_read_tokens', 0) for msg in assistant_msgs)
+                total_cost = sum(getattr(msg, 'cost_usd', 0.0) for msg in assistant_msgs)
+
+                col1, col2, col3, col4, col5 = st.columns(5)
+
+                with col1:
+                    st.metric("Input Tokens", f"{total_input:,}")
+
+                with col2:
+                    st.metric("Output Tokens", f"{total_output:,}")
+
+                with col3:
+                    st.metric("Cache Creation", f"{total_cache_creation:,}")
+
+                with col4:
+                    st.metric("Cache Read", f"{total_cache_read:,}")
+                    if total_cache_read > 0:
+                        savings = (total_cache_read * 0.9) / 1_000_000 * 3.00
+                        st.caption(f"💰 Saved ~${savings:.2f}")
+
+                with col5:
+                    st.metric("Total Cost", f"${total_cost:.4f}")
+                    avg_cost = total_cost / len(assistant_msgs) if assistant_msgs else 0
+                    st.caption(f"Avg: ${avg_cost:.4f}/msg")
 
 
 def render_conversation_view(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
