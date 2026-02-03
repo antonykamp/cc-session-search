@@ -464,6 +464,7 @@ class JSONLParser:
                 'is_sidechain': raw_msg.get('isSidechain', False),
                 'agent_id': raw_msg.get('agentId'),
                 'slug': raw_msg.get('slug'),
+                'api_msg_id': api_msg_id,
             }
 
             return ParsedMessage(

@@ -14,6 +14,7 @@ import argparse
 
 from cc_session_search.core.searcher import SessionSearcher
 from cc_session_search.core.summarizer import ConversationSummarizer
+from cc_session_search.token_breakdown import compute_token_breakdown
 
 
 # ANSI color codes
@@ -549,6 +550,69 @@ def cmd_cost(args):
     print(f"  Avg:    ${agg['total_cost_usd']/len(messages):.4f} per message")
 
 
+def cmd_token_breakdown(args):
+    """Show token breakdown by category for a session"""
+    resolver = SessionResolver(SessionSearcher())
+    ref = resolver.resolve(args.session, args.project)
+
+    searcher = SessionSearcher()
+    result = searcher.get_session_with_subagents(ref['session_id'], ref['project_name'])
+
+    if not result:
+        print(colorize(f"Session not found", Colors.ERROR, args.color), file=sys.stderr)
+        sys.exit(1)
+
+    messages = result['messages']
+    breakdown = compute_token_breakdown(messages)
+
+    if args.format == 'json':
+        data = {
+            'note': 'Tokens estimated via len(content)/4',
+            'categories': {
+                name: {
+                    'estimated_tokens': cat.total_tokens,
+                    'percentage': (cat.total_tokens / breakdown.total.total_tokens * 100) if breakdown.total.total_tokens > 0 else 0,
+                }
+                for name, cat in breakdown.categories.items()
+            },
+            'total_estimated_tokens': breakdown.total.total_tokens,
+        }
+        print(json.dumps(data, indent=2))
+        return
+
+    if not args.no_header:
+        print_session_header(result['metadata'], args.color)
+
+    print(colorize("\n=== Token Breakdown by Category ===\n", Colors.HEADER, args.color))
+
+    # Table header
+    header = f"{'Category':<20} {'~Tokens':>12} {'%':>6}"
+    print(colorize(header, Colors.BOLD, args.color))
+    print(colorize("-" * len(header), Colors.DIM, args.color))
+
+    # Sort by total tokens descending
+    sorted_cats = sorted(
+        breakdown.categories.items(),
+        key=lambda x: x[1].total_tokens,
+        reverse=True
+    )
+
+    for name, cat in sorted_cats:
+        total = cat.total_tokens
+        pct = (total / breakdown.total.total_tokens * 100) if breakdown.total.total_tokens > 0 else 0
+        print(f"{name:<20} {total:>12,.0f} {pct:>5.1f}%")
+
+    # Total row
+    print(colorize("-" * len(header), Colors.DIM, args.color))
+    t = breakdown.total
+    print(colorize(
+        f"{'TOTAL':<20} {t.total_tokens:>12,.0f} {100.0:>5.1f}%",
+        Colors.BOLD, args.color
+    ))
+
+    print(colorize("\nTokens estimated via len(content)/4", Colors.DIM, args.color))
+
+
 def cmd_search(args):
     """Search conversations with enhanced filtering"""
     searcher = SessionSearcher()
@@ -719,6 +783,13 @@ Examples:
     cost_parser.add_argument('session', help='Session ID or @shortcut')
     add_common_args(cost_parser)
 
+    # token-breakdown command
+    tb_parser = subparsers.add_parser('token-breakdown', help='Token breakdown by category')
+    tb_parser.add_argument('session', help='Session ID or @shortcut')
+    tb_parser.add_argument('--format', choices=['pretty', 'json', 'table'], default='pretty')
+    tb_parser.add_argument('--no-header', action='store_true', help='Skip header')
+    add_common_args(tb_parser)
+
     # search command
     search_parser = subparsers.add_parser('search', help='Search conversations')
     search_parser.add_argument('query', help='Search term')
@@ -764,6 +835,8 @@ Examples:
             cmd_tools(args)
         elif args.command == 'cost':
             cmd_cost(args)
+        elif args.command == 'token-breakdown':
+            cmd_token_breakdown(args)
         elif args.command == 'search':
             cmd_search(args)
         elif args.command == 'summarize':

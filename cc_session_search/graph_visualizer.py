@@ -559,6 +559,100 @@ def create_comparison_chart(
     return fig
 
 
+def create_token_breakdown_chart(breakdown) -> go.Figure:
+    """
+    Create a horizontal bar chart showing token usage by category.
+
+    Args:
+        breakdown: TokenBreakdown instance from token_breakdown module
+    """
+    if not breakdown.categories:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No token data available for breakdown",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16)
+        )
+        fig.update_layout(height=300)
+        return fig
+
+    # Sort categories by total tokens descending, filter out zero-token categories
+    sorted_cats = sorted(
+        ((name, cat) for name, cat in breakdown.categories.items() if cat.total_tokens > 0),
+        key=lambda x: x[1].total_tokens,
+        reverse=True
+    )
+
+    if not sorted_cats:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No token data available for breakdown",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16)
+        )
+        fig.update_layout(height=300)
+        return fig
+
+    categories = [name for name, _ in sorted_cats]
+    totals = [cat.total_tokens for _, cat in sorted_cats]
+
+    # Format text labels
+    text_labels = []
+    for t in totals:
+        if t >= 1_000_000:
+            text_labels.append(f"{t/1_000_000:.1f}M")
+        elif t >= 1_000:
+            text_labels.append(f"{t/1_000:.1f}K")
+        else:
+            text_labels.append(f"{t:.0f}")
+
+    # Percentage labels
+    grand_total = breakdown.total.total_tokens
+    pct_labels = [f"{t/grand_total*100:.1f}%" if grand_total > 0 else "" for t in totals]
+    combined_labels = [f"{txt} ({pct})" for txt, pct in zip(text_labels, pct_labels)]
+
+    # Color palette for categories
+    palette = ['#3498db', '#2ecc71', '#e74c3c', '#9b59b6', '#f39c12',
+               '#1abc9c', '#e67e22', '#34495e', '#16a085', '#c0392b',
+               '#2980b9', '#8e44ad', '#d35400', '#27ae60']
+    colors = [palette[i % len(palette)] for i in range(len(categories))]
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Bar(
+        y=categories, x=totals,
+        orientation='h',
+        marker_color=colors,
+        text=combined_labels,
+        textposition='outside',
+        hovertemplate='%{y}: %{x:,.0f} tokens<extra></extra>',
+        showlegend=False,
+    ))
+
+    fig.update_layout(
+        title=dict(
+            text="~Token Breakdown by Category (estimated via len/4)",
+            x=0.5,
+            xanchor='center'
+        ),
+        xaxis=dict(
+            title="~Tokens (log scale)",
+            type='log',
+            showgrid=True,
+            gridcolor='rgba(200,200,200,0.3)',
+        ),
+        yaxis=dict(autorange='reversed'),
+        height=max(300, len(categories) * 45 + 120),
+        margin=dict(r=120),
+        plot_bgcolor='rgba(250,250,250,0.5)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+
+    return fig
+
+
 def create_token_burnup_chart(messages: List[ParsedMessage]) -> go.Figure:
     """
     Create a burn-up chart showing cumulative token usage over messages.

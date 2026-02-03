@@ -20,8 +20,10 @@ from cc_session_search.graph_visualizer import (
     create_plotly_graph,
     create_tool_usage_chart,
     create_message_timeline,
-    create_token_burnup_chart
+    create_token_burnup_chart,
+    create_token_breakdown_chart
 )
+from cc_session_search.token_breakdown import compute_token_breakdown
 
 
 def render_subagent_section(metadata: ConversationMetadata, key_suffix: str):
@@ -474,7 +476,7 @@ def render_message_content(msg: ParsedMessage, is_thinking: bool, is_tool_call: 
 def render_visualizations(messages: List[ParsedMessage], metadata: ConversationMetadata):
     """Render visualization section"""
     with st.expander(f"📈 Visualizations", expanded=True):
-        tab1, tab2, tab3, tab4 = st.tabs(["Conversation Flow", "Tool Usage", "Timeline", "Token Burn-up"])
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Conversation Flow", "Tool Usage", "Timeline", "Token Burn-up", "Token Breakdown"])
 
         with tab1:
             fig = create_plotly_graph(messages, f"Conversation Flow - {metadata.session_id[:20]}...")
@@ -526,6 +528,36 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                     st.metric("Total Cost", f"${total_cost:.4f}")
                     avg_cost = total_cost / len(assistant_msgs) if assistant_msgs else 0
                     st.caption(f"Avg: ${avg_cost:.4f}/msg")
+
+        with tab5:
+            breakdown = compute_token_breakdown(messages)
+
+            if breakdown.categories:
+                fig = create_token_breakdown_chart(breakdown)
+                st.plotly_chart(fig, use_container_width=True)
+
+                st.markdown("---")
+                st.markdown("**Token Breakdown by Category**")
+
+                # Build table data
+                table_data = []
+                for name, cat in sorted(
+                    breakdown.categories.items(),
+                    key=lambda x: x[1].total_tokens,
+                    reverse=True
+                ):
+                    total = cat.total_tokens
+                    pct = (total / breakdown.total.total_tokens * 100) if breakdown.total.total_tokens > 0 else 0
+                    table_data.append({
+                        "Category": name,
+                        "~Tokens": f"{total:,.0f}",
+                        "%": f"{pct:.1f}%",
+                    })
+
+                st.dataframe(table_data, use_container_width=True, hide_index=True)
+                st.caption("Tokens estimated via len(content)/4")
+            else:
+                st.info("No token data available for breakdown")
 
 
 def render_conversation_view(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
