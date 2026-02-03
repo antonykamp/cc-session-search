@@ -627,18 +627,18 @@ def create_token_breakdown_chart(breakdown) -> go.Figure:
         marker_color=colors,
         text=combined_labels,
         textposition='outside',
-        hovertemplate='%{y}: %{x:,.0f} tokens<extra></extra>',
+        hovertemplate='%{y}: %{x:,.0f} chars<extra></extra>',
         showlegend=False,
     ))
 
     fig.update_layout(
         title=dict(
-            text="~Token Breakdown by Category (estimated via len/4)",
+            text="Character Breakdown by Category",
             x=0.5,
             xanchor='center'
         ),
         xaxis=dict(
-            title="~Tokens (log scale)",
+            title="Characters (log scale)",
             type='log',
             showgrid=True,
             gridcolor='rgba(200,200,200,0.3)',

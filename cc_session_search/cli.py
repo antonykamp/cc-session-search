@@ -567,15 +567,15 @@ def cmd_token_breakdown(args):
 
     if args.format == 'json':
         data = {
-            'note': 'Tokens estimated via len(content)/4',
+            'note': 'Character count per message via len(content)',
             'categories': {
                 name: {
-                    'estimated_tokens': cat.total_tokens,
+                    'characters': cat.total_tokens,
                     'percentage': (cat.total_tokens / breakdown.total.total_tokens * 100) if breakdown.total.total_tokens > 0 else 0,
                 }
                 for name, cat in breakdown.categories.items()
             },
-            'total_estimated_tokens': breakdown.total.total_tokens,
+            'total_characters': breakdown.total.total_tokens,
         }
         print(json.dumps(data, indent=2))
         return
@@ -586,7 +586,7 @@ def cmd_token_breakdown(args):
     print(colorize("\n=== Token Breakdown by Category ===\n", Colors.HEADER, args.color))
 
     # Table header
-    header = f"{'Category':<20} {'~Tokens':>12} {'%':>6}"
+    header = f"{'Category':<20} {'Chars':>12} {'%':>6}"
     print(colorize(header, Colors.BOLD, args.color))
     print(colorize("-" * len(header), Colors.DIM, args.color))
 
@@ -610,7 +610,7 @@ def cmd_token_breakdown(args):
         Colors.BOLD, args.color
     ))
 
-    print(colorize("\nTokens estimated via len(content)/4", Colors.DIM, args.color))
+    print(colorize("\nCounted as len(content) characters per message", Colors.DIM, args.color))
 
 
 def cmd_search(args):

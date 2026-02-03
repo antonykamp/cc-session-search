@@ -157,7 +157,7 @@ def compute_token_breakdown(messages: List[ParsedMessage]) -> TokenBreakdown:
         if category not in breakdown.categories:
             breakdown.categories[category] = CategoryTokens()
 
-        estimated = len(msg.content) / 4
+        estimated = len(msg.content)
         if estimated > 0:
             cat = breakdown.categories[category]
             cat.input_tokens += estimated

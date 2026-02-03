@@ -569,14 +569,14 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                     pct = (total / breakdown.total.total_tokens * 100) if breakdown.total.total_tokens > 0 else 0
                     table_data.append({
                         "Category": name,
-                        "~Tokens": f"{total:,.0f}",
+                        "Characters": f"{total:,.0f}",
                         "%": f"{pct:.1f}%",
                     })
 
                 st.dataframe(table_data, use_container_width=True, hide_index=True)
                 st.caption(
-                    "Tokens estimated via len(content)/4 — counts each message's content once. "
-                    "This is much smaller than API-reported totals (e.g. Token Burn-up), which re-count "
+                    "Character count per message via len(content) — counts each message's content once. "
+                    "This is much smaller than API-reported token totals (e.g. Token Burn-up), which re-count "
                     "the entire conversation history on every turn."
                 )
             else:
