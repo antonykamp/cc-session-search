@@ -555,7 +555,11 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                     })
 
                 st.dataframe(table_data, use_container_width=True, hide_index=True)
-                st.caption("Tokens estimated via len(content)/4")
+                st.caption(
+                    "Tokens estimated via len(content)/4 — counts each message's content once. "
+                    "This is much smaller than API-reported totals (e.g. Token Burn-up), which re-count "
+                    "the entire conversation history on every turn."
+                )
             else:
                 st.info("No token data available for breakdown")
 
