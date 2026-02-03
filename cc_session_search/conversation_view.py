@@ -85,8 +85,8 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
         tool_messages = sum(1 for msg in messages if msg.role == 'tool')
 
         total_tokens = sum(msg.token_count for msg in messages)
-        user_tokens = sum(msg.token_count for msg in messages if msg.role == 'user')
-        assistant_tokens = sum(msg.token_count for msg in messages if msg.role == 'assistant')
+        total_input = sum(msg.input_tokens + msg.cache_creation_tokens + msg.cache_read_tokens for msg in messages)
+        total_output = sum(msg.output_tokens for msg in messages)
         total_cost = sum(msg.cost_usd for msg in messages)
 
         duration_str = format_duration(metadata.started_at, metadata.ended_at)
@@ -152,7 +152,7 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
 
         with col2:
             st.metric("Total Tokens", f"{total_tokens:,}")
-            st.caption(f"Input: {user_tokens:,} | Output: {assistant_tokens:,}")
+            st.caption(f"Input: {total_input:,} | Output: {total_output:,}")
 
         with col3:
             st.metric("Total Cost", f"${total_cost:.4f}")

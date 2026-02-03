@@ -17,14 +17,26 @@ logger = logging.getLogger(__name__)
 
 # Claude pricing per million tokens (as of Jan 2025)
 # Source: https://www.anthropic.com/pricing
+# Claude pricing per million tokens
+# Source: https://platform.claude.com/docs/en/about-claude/pricing
+# Cache pricing multipliers:
+#   5-min cache write: 1.25× base input
+#   1-hour cache write: 2× base input
+#   Cache read: 0.1× base input
 CLAUDE_PRICING = {
+    'claude-opus-4-5-20251101': {'input': 5.00, 'output': 25.00},    # Claude Opus 4.5
     'claude-sonnet-4-5-20250929': {'input': 3.00, 'output': 15.00},  # Claude Sonnet 4.5
+    'claude-haiku-4-5-20251001': {'input': 1.00, 'output': 5.00},    # Claude Haiku 4.5
     'claude-3-5-sonnet-20241022': {'input': 3.00, 'output': 15.00},  # Claude 3.5 Sonnet
     'claude-3-5-sonnet-20240620': {'input': 3.00, 'output': 15.00},  # Claude 3.5 Sonnet (older)
     'claude-3-opus-20240229': {'input': 15.00, 'output': 75.00},     # Claude 3 Opus
     'claude-3-sonnet-20240229': {'input': 3.00, 'output': 15.00},    # Claude 3 Sonnet
     'claude-3-haiku-20240307': {'input': 0.25, 'output': 1.25},      # Claude 3 Haiku
 }
+
+CACHE_WRITE_5M_MULTIPLIER = 1.25
+CACHE_WRITE_1H_MULTIPLIER = 2.0
+CACHE_READ_MULTIPLIER = 0.1
 
 
 @dataclass
@@ -56,6 +68,8 @@ class ConversationMetadata:
     working_directory: Optional[str]
     message_count: int
     file_path: str
+    slug: Optional[str] = None
+    version: Optional[str] = None
     # Subagent-related fields
     is_subagent: bool = False
     parent_session_id: Optional[str] = None
@@ -116,9 +130,11 @@ class JSONLParser:
         metadata = self._extract_conversation_metadata(file_path, raw_messages)
 
         # Parse individual messages
+        # Track API message IDs to avoid double-counting usage for chunked responses
+        seen_api_msg_ids = set()
         for raw_msg in raw_messages:
             try:
-                parsed_msg = self._parse_message(raw_msg, metadata)
+                parsed_msg = self._parse_message(raw_msg, metadata, seen_api_msg_ids)
                 if parsed_msg:
                     messages.append(parsed_msg)
             except Exception as e:
@@ -165,9 +181,9 @@ class JSONLParser:
         # Extract conversation metadata
         metadata = self._extract_conversation_metadata(file_path, raw_messages)
 
-        # Count messages quickly (excluding summary and file-history)
+        # Count messages quickly (only actual conversation messages)
         message_count = sum(1 for msg in raw_messages
-                           if msg.get('type') in ['user', 'assistant'])
+                           if msg.get('type') in ('user', 'assistant'))
 
         # Get timestamps from raw messages for metadata
         timestamps = []
@@ -190,14 +206,32 @@ class JSONLParser:
     def _extract_conversation_metadata(self, file_path: Path, raw_messages: List[Dict]) -> ConversationMetadata:
         """Extract metadata from conversation file and messages."""
         # Project information from file path
-        # Expected format: ~/.claude/projects/{encoded-project-name}/conversation-{uuid}.jsonl
-        project_path = str(file_path.parent)
-        project_name = file_path.parent.name
+        # New format: ~/.claude/projects/{encoded-project-name}/{uuid}.jsonl
+        # Old format: ~/.claude/projects/{encoded-project-name}/conversation-{uuid}.jsonl
+        # Subagent format: ~/.claude/projects/{encoded-project-name}/{uuid}/subagents/agent-{id}.jsonl
+
+        # Determine project path and name based on file location
+        # Subagent files are nested: {project}/{session_id}/subagents/agent-{id}.jsonl
+        if file_path.parent.name == 'subagents':
+            # Subagent file: project is 3 levels up
+            project_path = str(file_path.parent.parent.parent)
+            project_name = file_path.parent.parent.parent.name
+        else:
+            project_path = str(file_path.parent)
+            project_name = file_path.parent.name
+
+        # Prefer sessionId from messages over filename stem
         session_id = file_path.stem
+        for msg in raw_messages:
+            if 'sessionId' in msg and msg['sessionId']:
+                session_id = msg['sessionId']
+                break
 
         # Extract other metadata from first available message
         git_branch = None
         working_directory = None
+        slug = None
+        version = None
 
         # Subagent detection
         is_subagent = False
@@ -206,29 +240,30 @@ class JSONLParser:
         agent_type = None
 
         for msg in raw_messages:
-            if 'gitBranch' in msg and msg['gitBranch']:
+            if 'gitBranch' in msg and msg['gitBranch'] and not git_branch:
                 git_branch = msg['gitBranch']
-            if 'cwd' in msg and msg['cwd']:
+            if 'cwd' in msg and msg['cwd'] and not working_directory:
                 working_directory = msg['cwd']
+            if 'slug' in msg and msg['slug'] and not slug:
+                slug = msg['slug']
+            if 'version' in msg and msg['version'] and not version:
+                version = msg['version']
 
-            # Detect subagent from first message with sidechain flag
-            if msg.get('isSidechain') and msg.get('agentId'):
+            # Detect subagent from first message with sidechain flag or agentId
+            if not is_subagent and msg.get('agentId'):
                 is_subagent = True
                 agent_id = msg.get('agentId')
-                # Parent session ID is stored in sessionId field for subagents
+                # Parent session ID is the sessionId field for subagents
                 parent_session_id = msg.get('sessionId')
 
                 # Try to extract agent type from message content or metadata
-                # Agent type might be in the first assistant message's context
                 message_data = msg.get('message', {})
                 if message_data.get('role') == 'assistant':
-                    # Look for agent type indicators in content
                     content = message_data.get('content', [])
                     if isinstance(content, list):
                         for block in content:
                             if isinstance(block, dict) and block.get('type') == 'text':
                                 text = block.get('text', '')
-                                # Try to infer agent type from common patterns
                                 if 'explore' in text.lower() or 'exploration' in text.lower():
                                     agent_type = 'Explore'
                                 elif 'plan' in text.lower():
@@ -236,10 +271,6 @@ class JSONLParser:
                                 elif 'claude code' in text.lower() or 'documentation' in text.lower():
                                     agent_type = 'claude-code-guide'
                                 break
-
-            # Break after finding branch info (usually consistent throughout conversation)
-            if git_branch and (not is_subagent or agent_type):
-                break
 
         return ConversationMetadata(
             project_name=project_name,
@@ -251,17 +282,26 @@ class JSONLParser:
             working_directory=working_directory,
             message_count=0,  # Will be filled after parsing messages
             file_path=str(file_path),
+            slug=slug,
+            version=version,
             is_subagent=is_subagent,
             parent_session_id=parent_session_id,
             agent_id=agent_id,
             agent_type=agent_type
         )
 
-    def _parse_message(self, raw_msg: Dict, metadata: ConversationMetadata) -> Optional[ParsedMessage]:
+    # Message types that should be skipped during parsing (not actual conversation messages)
+    SKIP_TYPES = {'queue-operation', 'file-history-snapshot', 'progress', 'system'}
+
+    def _parse_message(self, raw_msg: Dict, metadata: ConversationMetadata, seen_api_msg_ids: set = None) -> Optional[ParsedMessage]:
         """Parse a single message from the JSONL format."""
         try:
             # Extract basic fields
             msg_type = raw_msg.get('type', 'unknown')
+
+            # Skip non-message types (queue operations, progress updates, etc.)
+            if msg_type in self.SKIP_TYPES:
+                return None
 
             # Handle UUID differently for summary vs regular messages
             if msg_type == 'summary':
@@ -352,48 +392,58 @@ class JSONLParser:
             model = message_data.get('model', 'claude-sonnet-4-5-20250929')  # Default to latest
 
             # Extract actual token usage from API response
+            # In the new format, a single API response is split into multiple JSONL lines
+            # (one per content block: thinking, text, tool_use). Each line has the same
+            # message.id and identical usage data. We must only count usage once per API message.
+            api_msg_id = message_data.get('id')
+            usage_already_counted = False
+            if api_msg_id and seen_api_msg_ids is not None:
+                if api_msg_id in seen_api_msg_ids:
+                    usage_already_counted = True
+                else:
+                    seen_api_msg_ids.add(api_msg_id)
+
             usage = message_data.get('usage', {})
             input_tokens = usage.get('input_tokens', 0)
             output_tokens = usage.get('output_tokens', 0)
             cache_creation_tokens = usage.get('cache_creation_input_tokens', 0)
             cache_read_tokens = usage.get('cache_read_input_tokens', 0)
 
+            # Extract cache TTL breakdown for accurate pricing
+            cache_creation_detail = usage.get('cache_creation', {})
+            cache_5m_tokens = cache_creation_detail.get('ephemeral_5m_input_tokens', 0)
+            cache_1h_tokens = cache_creation_detail.get('ephemeral_1h_input_tokens', 0)
+
             # Calculate tokens and cost
             token_count = 0
             cost_usd = 0.0
 
             try:
-                # Only assistant messages have usage data
-                # For assistant messages: input_tokens includes the preceding user message(s)
-                #                        output_tokens is the assistant's response
-                if role == 'assistant' and (input_tokens > 0 or output_tokens > 0):
-                    # For display purposes, show only the output tokens for assistant messages
-                    # The input tokens represent the user's input which is attributed to the assistant's API call
-                    token_count = output_tokens
+                # Only count usage for assistant messages, and only once per API message ID
+                if role == 'assistant' and (input_tokens > 0 or output_tokens > 0 or cache_creation_tokens > 0 or cache_read_tokens > 0) and not usage_already_counted:
+                    token_count = input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens
 
-                    # Calculate cost using actual input/output tokens
-                    # Note: Cache tokens have different pricing
-                    # - cache_read_tokens are cheaper (10% of normal input cost)
-                    # - cache_creation_tokens cost same as input but enable future cache reads
                     pricing = CLAUDE_PRICING.get(model, CLAUDE_PRICING['claude-sonnet-4-5-20250929'])
+                    base_input_price = pricing['input']
 
-                    # Regular input tokens (includes preceding user messages)
-                    regular_input_tokens = input_tokens
-                    input_cost = (regular_input_tokens / 1_000_000) * pricing['input']
-
-                    # Output tokens (assistant's response)
+                    input_cost = (input_tokens / 1_000_000) * base_input_price
                     output_cost = (output_tokens / 1_000_000) * pricing['output']
 
-                    # Cache creation tokens (same as input)
-                    cache_creation_cost = (cache_creation_tokens / 1_000_000) * pricing['input']
+                    # Cache write cost depends on TTL
+                    if cache_5m_tokens or cache_1h_tokens:
+                        # Use TTL-specific breakdown when available
+                        cache_creation_cost = (
+                            (cache_5m_tokens / 1_000_000) * base_input_price * CACHE_WRITE_5M_MULTIPLIER +
+                            (cache_1h_tokens / 1_000_000) * base_input_price * CACHE_WRITE_1H_MULTIPLIER
+                        )
+                    else:
+                        # Fallback for older files without TTL breakdown: assume 5-min cache
+                        cache_creation_cost = (cache_creation_tokens / 1_000_000) * base_input_price * CACHE_WRITE_5M_MULTIPLIER
 
-                    # Cache read tokens (90% discount)
-                    cache_read_cost = (cache_read_tokens / 1_000_000) * (pricing['input'] * 0.1)
+                    cache_read_cost = (cache_read_tokens / 1_000_000) * base_input_price * CACHE_READ_MULTIPLIER
 
                     cost_usd = input_cost + output_cost + cache_creation_cost + cache_read_cost
                 else:
-                    # For user messages and tool responses, tokens are accounted for in the assistant's usage data
-                    # Set everything to 0 since these are included in the next assistant message
                     token_count = 0
                     cost_usd = 0.0
                     input_tokens = 0
@@ -409,7 +459,11 @@ class JSONLParser:
                 'cwd': raw_msg.get('cwd'),
                 'git_branch': raw_msg.get('gitBranch'),
                 'is_meta': is_meta,
-                'model': model
+                'model': model,
+                'parent_uuid': raw_msg.get('parentUuid'),
+                'is_sidechain': raw_msg.get('isSidechain', False),
+                'agent_id': raw_msg.get('agentId'),
+                'slug': raw_msg.get('slug'),
             }
 
             return ParsedMessage(

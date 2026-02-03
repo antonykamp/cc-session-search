@@ -433,17 +433,35 @@ class SessionSearcher:
 
         subagents = []
 
-        # Scan for agent-*.jsonl files in the same project
+        # New format: {session_id}/subagents/agent-{id}.jsonl
+        subagent_dir = project_dir / session_id / 'subagents'
+        if subagent_dir.exists():
+            for agent_file in subagent_dir.glob('agent-*.jsonl'):
+                try:
+                    metadata, _ = self.parser.parse_metadata_only(agent_file)
+
+                    subagents.append({
+                        'agent_id': metadata.agent_id,
+                        'agent_type': metadata.agent_type or 'Unknown',
+                        'session_id': metadata.session_id,
+                        'file_path': str(agent_file),
+                        'message_count': metadata.message_count,
+                        'started_at': metadata.started_at.isoformat() if metadata.started_at else None,
+                        'ended_at': metadata.ended_at.isoformat() if metadata.ended_at else None
+                    })
+                except Exception:
+                    continue
+
+        # Legacy format: agent-*.jsonl in the project directory
         for agent_file in project_dir.glob('agent-*.jsonl'):
             try:
                 metadata, _ = self.parser.parse_metadata_only(agent_file)
 
-                # Check if this subagent belongs to the parent session
                 if metadata.is_subagent and metadata.parent_session_id == session_id:
                     subagents.append({
                         'agent_id': metadata.agent_id,
                         'agent_type': metadata.agent_type or 'Unknown',
-                        'session_id': metadata.session_id,  # This is the file stem (agent-XXX)
+                        'session_id': metadata.session_id,
                         'file_path': str(agent_file),
                         'message_count': metadata.message_count,
                         'started_at': metadata.started_at.isoformat() if metadata.started_at else None,
