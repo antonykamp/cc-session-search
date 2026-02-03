@@ -100,16 +100,16 @@ class TestCategoryTokens:
 
 class TestComputeTokenBreakdown:
     def test_single_block(self):
-        """A single assistant message estimates tokens from content length."""
+        """A single assistant message counts characters from content."""
         msg = _make_msg(
             role='assistant',
-            content='Hello world!',  # 12 chars -> 3 estimated tokens
+            content='Hello world!',  # 12 chars
             metadata={'api_msg_id': 'msg-1'},
         )
         breakdown = compute_token_breakdown([msg])
         assert 'text' in breakdown.categories
-        assert breakdown.categories['text'].input_tokens == pytest.approx(3.0)
-        assert breakdown.total.total_tokens == pytest.approx(3.0)
+        assert breakdown.categories['text'].input_tokens == pytest.approx(12.0)
+        assert breakdown.total.total_tokens == pytest.approx(12.0)
 
     def test_grouped_messages(self):
         """Messages sharing api_msg_id each contribute their own content estimate."""
@@ -125,8 +125,8 @@ class TestComputeTokenBreakdown:
         )
         breakdown = compute_token_breakdown([thinking, text])
 
-        assert breakdown.categories['thinking'].input_tokens == pytest.approx(len('[Thinking: abcd]') / 4)
-        assert breakdown.categories['text'].input_tokens == pytest.approx(len('Here is my answer.') / 4)
+        assert breakdown.categories['thinking'].input_tokens == pytest.approx(len('[Thinking: abcd]'))
+        assert breakdown.categories['text'].input_tokens == pytest.approx(len('Here is my answer.'))
 
     def test_duplicate_content_deduplication(self):
         """Duplicate content blocks within a group should be deduplicated."""
@@ -148,9 +148,9 @@ class TestComputeTokenBreakdown:
         breakdown = compute_token_breakdown([msg1, msg2, msg3])
 
         # Only 2 unique blocks counted
-        assert breakdown.categories['thinking'].input_tokens == pytest.approx(21 / 4)
-        assert breakdown.categories['text'].input_tokens == pytest.approx(13 / 4)
-        assert breakdown.total.input_tokens == pytest.approx((21 + 13) / 4)
+        assert breakdown.categories['thinking'].input_tokens == pytest.approx(21)
+        assert breakdown.categories['text'].input_tokens == pytest.approx(13)
+        assert breakdown.total.input_tokens == pytest.approx((21 + 13))
 
     def test_ungrouped_messages(self):
         """Messages without api_msg_id should still be classified."""
@@ -161,8 +161,8 @@ class TestComputeTokenBreakdown:
         assert 'user' in breakdown.categories
         # tool_result without matching tool call stays as 'tool_result'
         assert 'tool_result' in breakdown.categories
-        assert breakdown.categories['user'].input_tokens == pytest.approx(len('hello') / 4)
-        assert breakdown.categories['tool_result'].input_tokens == pytest.approx(len('result data') / 4)
+        assert breakdown.categories['user'].input_tokens == pytest.approx(len('hello'))
+        assert breakdown.categories['tool_result'].input_tokens == pytest.approx(len('result data'))
 
     def test_tool_result_attributed_to_calling_tool(self):
         """Tool results should be attributed to the tool that called them."""
@@ -182,7 +182,7 @@ class TestComputeTokenBreakdown:
         # tool_result should be merged into 'Read', not 'tool_result'
         assert 'tool_result' not in breakdown.categories
         assert 'Read' in breakdown.categories
-        expected = (len('[Calling tool: Read]') + len('file contents here are long')) / 4
+        expected = len('[Calling tool: Read]') + len('file contents here are long')
         assert breakdown.categories['Read'].input_tokens == pytest.approx(expected)
 
     def test_mixed_grouped_and_ungrouped(self):
@@ -199,7 +199,7 @@ class TestComputeTokenBreakdown:
         assert 'user' in breakdown.categories
         assert 'text' in breakdown.categories
         assert 'tool_result' in breakdown.categories
-        expected = len('hello') / 4 + len('response') / 4 + len('ok!!') / 4
+        expected = len('hello') + len('response') + len('ok!!')
         assert breakdown.total.input_tokens == pytest.approx(expected)
         assert breakdown.categories['user'].estimated is True
         assert breakdown.categories['text'].estimated is True
