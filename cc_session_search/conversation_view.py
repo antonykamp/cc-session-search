@@ -254,29 +254,48 @@ def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
                 filter_options.append(label)
                 filter_type_mapping[label] = msg_types
 
-        # Message type filter with hierarchical groups
-        selected_filters = st.multiselect(
-            "Filter by message type",
-            filter_options,
-            default=[opt for opt in filter_options if not opt.startswith('  →')],  # Default: all except subgroups
-            key=f"type_filter_{key_suffix}",
-            help="Main categories select all messages. Subgroups (→) allow filtering specific tool types."
-        )
+        # Search and type filter side by side
+        search_col, filter_col = st.columns([1, 2])
+
+        with search_col:
+            search_query = st.text_input(
+                "Search messages",
+                key=f"search_{key_suffix}",
+                placeholder="fulltext search...",
+            )
+
+        with filter_col:
+            # Message type filter with hierarchical groups
+            selected_filters = st.multiselect(
+                "Filter by message type",
+                filter_options,
+                default=[opt for opt in filter_options if not opt.startswith('  →')],  # Default: all except subgroups
+                key=f"type_filter_{key_suffix}",
+                help="Main categories select all messages. Subgroups (→) allow filtering specific tool types."
+            )
 
         # Build selected types from hierarchical selection
         selected_types = set()
         for filter_label in selected_filters:
             selected_types.update(filter_type_mapping[filter_label])
 
-        # Filter messages with original indices
-        filtered_messages_with_idx = [
-            (idx, msg) for idx, msg in enumerate(messages)
-            if get_message_type(msg, messages) in selected_types
-        ]
+        # Filter messages by type and search query
+        search_lower = search_query.lower().strip() if search_query else ""
+        filtered_messages_with_idx = []
+        for idx, msg in enumerate(messages):
+            if get_message_type(msg, messages) not in selected_types:
+                continue
+            if search_lower and search_lower not in msg.content.lower():
+                continue
+            filtered_messages_with_idx.append((idx, msg))
 
         # Show filter summary
         if len(filtered_messages_with_idx) != len(messages):
-            st.info(f"📊 Showing {len(filtered_messages_with_idx)} of {len(messages)} messages")
+            parts = []
+            parts.append(f"Showing {len(filtered_messages_with_idx)} of {len(messages)} messages")
+            if search_lower:
+                parts.append(f'matching "{search_query}"')
+            st.info(f"📊 {' '.join(parts)}")
 
         # Pagination
         messages_per_page = 20
