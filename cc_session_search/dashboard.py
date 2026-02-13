@@ -42,7 +42,12 @@ def load_conversation(session_id: str, project_name: str) -> Tuple[ConversationM
 
     session_file = searcher.claude_dir / project_name / f"{session_id}.jsonl"
     if not session_file.exists():
-        raise FileNotFoundError(f"Session file not found: {session_file}")
+        # Search for sub-agent files: {project}/*/subagents/{session_id}.jsonl
+        subagent_matches = list((searcher.claude_dir / project_name).glob(f"*/subagents/{session_id}.jsonl"))
+        if subagent_matches:
+            session_file = subagent_matches[0]
+        else:
+            raise FileNotFoundError(f"Session file not found: {session_file}")
 
     return parser.parse_conversation_file(session_file)
 

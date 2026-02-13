@@ -77,6 +77,12 @@ def render_session_selector(searcher: SessionSearcher, key_suffix: str) -> Optio
             session_display.append(sub_display)
             session_ids.append(sub['session_id'])
 
+    # Apply pending navigation (set before selectbox is instantiated)
+    nav_key = f"_nav_session_{key_suffix}"
+    if nav_key in st.session_state:
+        pending_idx = st.session_state.pop(nav_key)
+        st.session_state[f"session_{key_suffix}"] = pending_idx
+
     # Pre-select from URL if available
     default_session_idx = 0
     if url_session and url_session in session_ids:
@@ -91,5 +97,22 @@ def render_session_selector(searcher: SessionSearcher, key_suffix: str) -> Optio
     )
 
     selected_session = session_ids[session_idx]
+
+    # Previous / Next session navigation
+    col_prev, col_next = st.columns(2)
+    with col_prev:
+        if session_idx < len(session_ids) - 1:
+            if st.button("← Previous", key=f"prev_{key_suffix}", use_container_width=True):
+                new_idx = session_idx + 1
+                st.session_state[nav_key] = new_idx
+                st.query_params[f"session{key_suffix}"] = session_ids[new_idx]
+                st.rerun()
+    with col_next:
+        if session_idx > 0:
+            if st.button("Next →", key=f"next_{key_suffix}", use_container_width=True):
+                new_idx = session_idx - 1
+                st.session_state[nav_key] = new_idx
+                st.query_params[f"session{key_suffix}"] = session_ids[new_idx]
+                st.rerun()
 
     return (selected_project, selected_session)

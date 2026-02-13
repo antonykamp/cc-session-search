@@ -220,12 +220,14 @@ class JSONLParser:
             project_path = str(file_path.parent)
             project_name = file_path.parent.name
 
-        # Prefer sessionId from messages over filename stem
+        # Prefer sessionId from messages over filename stem,
+        # but NOT for subagent files (their sessionId points to the parent session)
         session_id = file_path.stem
-        for msg in raw_messages:
-            if 'sessionId' in msg and msg['sessionId']:
-                session_id = msg['sessionId']
-                break
+        if file_path.parent.name != 'subagents':
+            for msg in raw_messages:
+                if 'sessionId' in msg and msg['sessionId']:
+                    session_id = msg['sessionId']
+                    break
 
         # Extract other metadata from first available message
         git_branch = None

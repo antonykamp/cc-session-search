@@ -23,7 +23,7 @@ from cc_session_search.graph_visualizer import (
     create_token_burnup_chart,
     create_token_breakdown_chart
 )
-from cc_session_search.token_breakdown import compute_token_breakdown
+from cc_session_search.token_breakdown import compute_token_breakdown, CategoryTokens
 
 
 def render_subagent_section(metadata: ConversationMetadata, key_suffix: str):
@@ -123,8 +123,8 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
             with col2:
                 st.metric(
                     "Total Tokens",
-                    f"{aggregate_metrics['total_tokens']:,}",
-                    delta=f"+{aggregate_metrics['subagent_tokens']:,} from subagents"
+                    f"{aggregate_metrics['total_tokens']}",
+                    delta=f"+{aggregate_metrics['subagent_tokens']} from subagents"
                 )
 
             with col3:
@@ -153,8 +153,8 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
             st.caption(f"👤 {user_messages} · 🤖 {assistant_messages} · 🔧 {tool_messages}")
 
         with col2:
-            st.metric("Total Tokens", f"{total_tokens:,}")
-            st.caption(f"Input: {total_input:,} | Output: {total_output:,}")
+            st.metric("Total Tokens", f"{total_tokens}")
+            st.caption(f"Input: {total_input} | Output: {total_output}")
 
         with col3:
             st.metric("Total Cost", f"${total_cost:.4f}")
@@ -192,11 +192,29 @@ def render_tool_usage_section(messages: List[ParsedMessage]):
 
     with st.expander(f"🔧 Tool Usage ({tool_stats['total_calls']} calls)", expanded=True):
         if tool_stats['total_calls'] > 0:
+            preferred_tool_order = ['Read', 'Glob', 'Edit', 'Skill', 'Bash', 'Grep']
+            def tool_sort_key(item):
+                name = item[0]
+                for i, pref in enumerate(preferred_tool_order):
+                    if name.lower() == pref.lower():
+                        return (0, i)
+                return (1, name.lower())
+
+            # Ensure all preferred tools appear, even if 0
+            full_tool_counts = {pref: tool_stats['tool_counts'].get(pref, 0) for pref in preferred_tool_order}
+            full_tool_counts.update(tool_stats['tool_counts'])
+
+            sorted_tools = sorted(full_tool_counts.items(), key=tool_sort_key)
             tool_df_data = [
                 {"Tool": tool, "Count": count}
-                for tool, count in sorted(tool_stats['tool_counts'].items(), key=lambda x: x[1], reverse=True)
+                for tool, count in sorted_tools
             ]
             st.dataframe(tool_df_data, width='stretch', hide_index=True)
+
+            # Copy button: only preferred categories + total (for Excel paste)
+            preferred_counts = [str(full_tool_counts.get(pref, 0)) for pref in preferred_tool_order]
+            preferred_counts.append(str(tool_stats['total_calls']))
+            st.code("\t".join(preferred_counts), language=None)
         else:
             st.info("No tool calls in this conversation")
 
@@ -529,16 +547,16 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                 col1, col2, col3, col4, col5 = st.columns(5)
 
                 with col1:
-                    st.metric("Input Tokens", f"{total_input:,}")
+                    st.metric("Input Tokens", f"{total_input}")
 
                 with col2:
-                    st.metric("Output Tokens", f"{total_output:,}")
+                    st.metric("Output Tokens", f"{total_output}")
 
                 with col3:
-                    st.metric("Cache Creation", f"{total_cache_creation:,}")
+                    st.metric("Cache Creation", f"{total_cache_creation}")
 
                 with col4:
-                    st.metric("Cache Read", f"{total_cache_read:,}")
+                    st.metric("Cache Read", f"{total_cache_read}")
                     if total_cache_read > 0:
                         savings = (total_cache_read * 0.9) / 1_000_000 * 3.00
                         st.caption(f"💰 Saved ~${savings:.2f}")
@@ -552,28 +570,54 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
             breakdown = compute_token_breakdown(messages)
 
             if breakdown.categories:
+                st.metric("Total Characters", f"{breakdown.total.total_tokens:.0f}")
+
                 fig = create_token_breakdown_chart(breakdown)
                 st.plotly_chart(fig, use_container_width=True)
 
                 st.markdown("---")
-                st.markdown("**Token Breakdown by Category**")
+                st.markdown("**Character Breakdown by Category**")
 
-                # Build table data
+                # Build table data in preferred order
+                preferred_order = ['thinking', 'Read', 'Edit', 'Bash', 'Skill', 'Grep', 'Glob', 'text']
+                def category_sort_key(item):
+                    name = item[0]
+                    name_lower = name.lower()
+                    for i, pref in enumerate(preferred_order):
+                        if name_lower == pref.lower():
+                            return (0, i)
+                    return (1, name_lower)
+
+                # Ensure all preferred categories appear, even if 0
+                full_categories = {pref: breakdown.categories.get(pref, CategoryTokens()) for pref in preferred_order}
+                full_categories.update(breakdown.categories)
+
                 table_data = []
                 for name, cat in sorted(
-                    breakdown.categories.items(),
-                    key=lambda x: x[1].total_tokens,
-                    reverse=True
+                    full_categories.items(),
+                    key=category_sort_key
                 ):
                     total = cat.total_tokens
                     pct = (total / breakdown.total.total_tokens * 100) if breakdown.total.total_tokens > 0 else 0
                     table_data.append({
                         "Category": name,
-                        "Characters": f"{total:,.0f}",
+                        "Characters": f"{total:.0f}",
                         "%": f"{pct:.1f}%",
                     })
 
+                table_data.append({
+                    "Category": "TOTAL",
+                    "Characters": f"{breakdown.total.total_tokens:.0f}",
+                    "%": "100.0%",
+                })
+
                 st.dataframe(table_data, use_container_width=True, hide_index=True)
+
+                # Copy button: only preferred categories + total (for Excel paste)
+                preferred_chars = [f"{full_categories.get(pref, CategoryTokens()).total_tokens:.0f}" for pref in preferred_order]
+                preferred_chars.append(f"{breakdown.total.total_tokens:.0f}")
+                st.code("\t".join(preferred_chars), language=None)
+
                 st.caption(
                     "Character count per message via len(content) — counts each message's content once. "
                     "This is much smaller than API-reported token totals (e.g. Token Burn-up), which re-count "
@@ -583,8 +627,55 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                 st.info("No token data available for breakdown")
 
 
+def render_copy_section(metadata: ConversationMetadata, messages: List[ParsedMessage]):
+    """Render a top section with copyable values for Excel"""
+    # Compute metrics
+    total_tokens = sum(msg.token_count for msg in messages)
+    total_messages = len(messages)
+    tool_stats = get_tool_usage_stats(messages)
+    total_tool_calls = tool_stats['total_calls']
+
+    duration_seconds = 0
+    if metadata.started_at and metadata.ended_at:
+        duration_seconds = int((metadata.ended_at - metadata.started_at).total_seconds())
+
+    # Tool use counts
+    preferred_tool_order = ['Read', 'Glob', 'Edit', 'Skill', 'Bash', 'Grep']
+    tool_counts = [str(tool_stats['tool_counts'].get(pref, 0)) for pref in preferred_tool_order]
+    tool_counts.append(str(total_tool_calls))
+
+    # Character breakdown
+    breakdown = compute_token_breakdown(messages)
+    preferred_char_order = ['thinking', 'Read', 'Edit', 'Bash', 'Skill', 'Grep', 'Glob', 'text']
+    char_counts = [f"{breakdown.categories.get(pref, CategoryTokens()).total_tokens:.0f}" for pref in preferred_char_order]
+    char_counts.append(f"{breakdown.total.total_tokens:.0f}")
+
+    # Build link
+    link = f"?mode=single&project1={metadata.project_name}&session1={metadata.session_id}"
+
+    # Build single row: Tool counts | Char counts | Token | Message | Time | Link | Branch
+    values = tool_counts + char_counts + [
+        str(total_tokens),
+        str(total_messages),
+        str(duration_seconds),
+        link,
+        metadata.git_branch or "N/A",
+    ]
+
+    headers = (
+        [f"{t} Tool" for t in preferred_tool_order] + ["Total Tool"]
+        + [f"{c} Chars" for c in preferred_char_order] + ["Total Chars"]
+        + ["Token", "Message", "Time", "Link", "Branch"]
+    )
+
+    with st.expander("📋 Copy for Excel", expanded=True):
+        st.caption(" | ".join(headers))
+        st.code("\t".join(values), language=None)
+
+
 def render_conversation_view(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
     """Main function to render complete conversation view"""
+    render_copy_section(metadata, messages)
     render_metadata_section(metadata, messages, key_suffix)
     render_tool_usage_section(messages)
     render_subagent_section(metadata, key_suffix)

@@ -36,8 +36,8 @@ def render_stats_comparison(messages1: List[ParsedMessage], messages2: List[Pars
 
     with col2:
         token_delta = total_tokens2 - total_tokens1
-        st.metric("Session 1 Tokens", f"{total_tokens1:,}")
-        st.metric("Session 2 Tokens", f"{total_tokens2:,}", delta=f"{token_delta:,}")
+        st.metric("Session 1 Tokens", f"{total_tokens1}")
+        st.metric("Session 2 Tokens", f"{total_tokens2}", delta=f"{token_delta}")
 
     with col3:
         cost_delta = total_cost2 - total_cost1
