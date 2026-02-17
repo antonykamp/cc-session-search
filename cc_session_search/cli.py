@@ -242,6 +242,17 @@ def cmd_show(args):
             msg_count = sub.get('message_count', 0)
             print(f"  • {agent_type}: {msg_count} messages")
 
+        # Aggregate tool call count including subagents
+        all_msgs = messages + result.get('subagent_messages', [])
+        tool_count = sum(
+            1 for m in all_msgs
+            if (m.role if hasattr(m, 'role') else m.get('role')) == 'assistant'
+            and getattr(m, 'tool_uses', None)
+            and isinstance(m.tool_uses, dict)
+            and 'tool_calls' in m.tool_uses
+        )
+        print(f"  Total tool calls (incl. subagents): {tool_count}")
+
     # Recent messages preview
     if not args.no_preview:
         print(colorize("\n─── Last 5 messages ───", Colors.HEADER, args.color))
@@ -476,10 +487,12 @@ def cmd_tools(args):
         sys.exit(1)
 
     messages = result['messages']
+    subagent_messages = result.get('subagent_messages', [])
+    all_messages = messages + subagent_messages
 
     # Extract tool calls
     tool_calls = []
-    for idx, msg in enumerate(messages):
+    for idx, msg in enumerate(all_messages):
         role = msg.role if hasattr(msg, 'role') else msg.get('role')
         content = str(msg.content if hasattr(msg, 'content') else msg.get('content', ''))
         if role == 'tool' or 'tool_use' in content:
@@ -491,7 +504,10 @@ def cmd_tools(args):
 
     if not args.no_header:
         print_session_header(result['metadata'], args.color)
-        print(colorize(f"\nFound {len(tool_calls)} tool calls\n", Colors.HEADER, args.color))
+        label = f"\nFound {len(tool_calls)} tool calls"
+        if subagent_messages:
+            label += f" (including subagent tools)"
+        print(colorize(label + "\n", Colors.HEADER, args.color))
 
     if args.stats:
         # Show statistics
@@ -563,11 +579,14 @@ def cmd_token_breakdown(args):
         sys.exit(1)
 
     messages = result['messages']
-    breakdown = compute_token_breakdown(messages)
+    subagent_messages = result.get('subagent_messages', [])
+    all_messages = messages + subagent_messages
+    breakdown = compute_token_breakdown(all_messages)
 
     if args.format == 'json':
         data = {
             'note': 'Character count per message via len(content)',
+            'includes_subagents': bool(subagent_messages),
             'categories': {
                 name: {
                     'characters': cat.total_tokens,
@@ -583,7 +602,10 @@ def cmd_token_breakdown(args):
     if not args.no_header:
         print_session_header(result['metadata'], args.color)
 
-    print(colorize("\n=== Token Breakdown by Category ===\n", Colors.HEADER, args.color))
+    header_label = "\n=== Token Breakdown by Category ==="
+    if subagent_messages:
+        header_label += " (including subagents)"
+    print(colorize(header_label + "\n", Colors.HEADER, args.color))
 
     # Table header
     header = f"{'Category':<20} {'Chars':>12} {'%':>6}"
@@ -610,7 +632,10 @@ def cmd_token_breakdown(args):
         Colors.BOLD, args.color
     ))
 
-    print(colorize("\nCounted as len(content) characters per message", Colors.DIM, args.color))
+    note = "\nCounted as len(content) characters per message"
+    if subagent_messages:
+        note += f" (includes {len(subagent_messages)} subagent messages)"
+    print(colorize(note, Colors.DIM, args.color))
 
 
 def cmd_search(args):

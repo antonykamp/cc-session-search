@@ -52,6 +52,28 @@ def load_conversation(session_id: str, project_name: str) -> Tuple[ConversationM
     return parser.parse_conversation_file(session_file)
 
 
+def load_session_full(session_id: str, project_name: str) -> dict:
+    """Load session with subagent data via get_session_with_subagents.
+
+    Returns the full dict from get_session_with_subagents, or falls back
+    to load_conversation for subagent sessions that aren't found directly.
+    """
+    searcher = get_searcher()
+    result = searcher.get_session_with_subagents(session_id, project_name)
+    if result:
+        return result
+
+    # Fallback for subagent sessions
+    metadata, messages = load_conversation(session_id, project_name)
+    return {
+        'metadata': metadata,
+        'messages': messages,
+        'subagent_messages': [],
+        'subagents': [],
+        'aggregate_metrics': None,
+    }
+
+
 def main():
     """Main dashboard application"""
 
@@ -97,7 +119,6 @@ def main():
     try:
         # Load session 1
         project1, session1 = session1_info
-        metadata1, messages1 = load_conversation(session1, project1)
 
         # Update URL parameters based on current selections (only if changed)
         new_params = {
@@ -117,9 +138,18 @@ def main():
             st.query_params.update(new_params)
 
         if mode == "Single Session":
-            # Single session view
+            # Single session view — load full data including subagents
+            session_data = load_session_full(session1, project1)
+            metadata1 = session_data['metadata']
+            messages1 = session_data['messages']
+
             st.header(f"📄 Session: {metadata1.session_id}")
-            render_conversation_view(metadata1, messages1, "1")
+            render_conversation_view(
+                metadata1, messages1, "1",
+                subagent_messages=session_data['subagent_messages'],
+                subagents=session_data['subagents'],
+                aggregate_metrics=session_data['aggregate_metrics'],
+            )
 
         else:
             # Comparison mode
@@ -127,7 +157,9 @@ def main():
                 st.warning("Please select a second session from the sidebar")
                 return
 
-            # Load session 2
+            # Load both sessions (comparison stays parent-only)
+            metadata1, messages1 = load_conversation(session1, project1)
+
             project2, session2 = session2_info
             metadata2, messages2 = load_conversation(session2, project2)
 

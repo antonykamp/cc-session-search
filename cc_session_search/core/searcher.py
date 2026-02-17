@@ -551,6 +551,7 @@ class SessionSearcher:
 
         # Parse subagent sessions for aggregate metrics
         subagent_details = []
+        all_subagent_messages = []
         for subagent in subagents:
             try:
                 sub_metadata, sub_messages = self.parser.parse_conversation_file(Path(subagent['file_path']))
@@ -559,6 +560,8 @@ class SessionSearcher:
 
                 total_tokens += sub_tokens
                 total_cost += sub_cost
+
+                all_subagent_messages.extend(sub_messages)
 
                 subagent_details.append({
                     **subagent,
@@ -571,6 +574,7 @@ class SessionSearcher:
         return {
             'metadata': metadata,
             'messages': messages,
+            'subagent_messages': all_subagent_messages,
             'subagents': subagent_details,
             'aggregate_metrics': {
                 'total_tokens': total_tokens,

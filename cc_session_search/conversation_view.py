@@ -75,7 +75,7 @@ def render_subagent_section(metadata: ConversationMetadata, key_suffix: str):
                 st.divider()
 
 
-def render_metadata_section(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
+def render_metadata_section(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str, aggregate_metrics: dict = None):
     """Render session metadata section"""
     from cc_session_search.core.searcher import SessionSearcher
 
@@ -93,9 +93,8 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
 
         duration_str = format_duration(metadata.started_at, metadata.ended_at)
 
-        # Check for subagents and calculate aggregate metrics
-        aggregate_metrics = None
-        if not metadata.is_subagent:
+        # If aggregate_metrics not passed, try to fetch them
+        if aggregate_metrics is None and not metadata.is_subagent:
             searcher = SessionSearcher()
             session_id = metadata.session_id
             if session_id.startswith('conversation-'):
@@ -186,11 +185,19 @@ def render_metadata_section(metadata: ConversationMetadata, messages: List[Parse
             st.code(metadata.file_path, language="bash")
 
 
-def render_tool_usage_section(messages: List[ParsedMessage]):
+def render_tool_usage_section(messages: List[ParsedMessage], subagent_messages: List[ParsedMessage] = None):
     """Render tool usage statistics section"""
-    tool_stats = get_tool_usage_stats(messages)
+    combined = messages + (subagent_messages or [])
+    tool_stats = get_tool_usage_stats(combined)
 
-    with st.expander(f"🔧 Tool Usage ({tool_stats['total_calls']} calls)", expanded=True):
+    label_extra = ""
+    if subagent_messages:
+        parent_stats = get_tool_usage_stats(messages)
+        sub_calls = tool_stats['total_calls'] - parent_stats['total_calls']
+        if sub_calls > 0:
+            label_extra = f", {sub_calls} from subagents"
+
+    with st.expander(f"🔧 Tool Usage ({tool_stats['total_calls']} calls{label_extra})", expanded=True):
         if tool_stats['total_calls'] > 0:
             preferred_tool_order = ['Read', 'Glob', 'Edit', 'Skill', 'Bash', 'Grep']
             def tool_sort_key(item):
@@ -219,7 +226,50 @@ def render_tool_usage_section(messages: List[ParsedMessage]):
             st.info("No tool calls in this conversation")
 
 
-def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
+def build_subagent_links(messages: List[ParsedMessage], subagents: list, project_name: str) -> dict:
+    """Build a mapping from message index to subagent session URL.
+
+    Matches subagent_call tool_use_id → subagent_result agentId → subagent session_id.
+    Returns {message_index: url_string}.
+    """
+    if not subagents:
+        return {}
+
+    # Build agentId → session URL mapping from subagents list
+    agent_id_to_url = {}
+    for sub in subagents:
+        agent_id = sub.get('agent_id', '')
+        session_id = sub.get('session_id', '')
+        if agent_id and session_id:
+            url = f"?mode=single&project1={project_name}&session1={session_id}"
+            agent_id_to_url[agent_id] = url
+
+    # Build tool_use_id → agentId mapping from tool results
+    tool_use_id_to_agent = {}
+    for msg in messages:
+        if msg.role == 'tool' and msg.tool_uses and isinstance(msg.tool_uses, dict):
+            agent_id = msg.tool_uses.get('agentId', '')
+            tool_use_id = msg.tool_uses.get('tool_use_id', '')
+            if agent_id and tool_use_id:
+                tool_use_id_to_agent[tool_use_id] = agent_id
+
+    # Map message indices of subagent_call messages to URLs
+    links = {}
+    for idx, msg in enumerate(messages):
+        if msg.role == 'assistant' and msg.tool_uses and 'tool_calls' in msg.tool_uses:
+            for tool_call in msg.tool_uses['tool_calls']:
+                tool_name = tool_call.get('name', '')
+                if tool_name == 'Task':
+                    tool_id = tool_call.get('id', '')
+                    agent_id = tool_use_id_to_agent.get(tool_id, '')
+                    if agent_id and agent_id in agent_id_to_url:
+                        links[idx] = agent_id_to_url[agent_id]
+                        break
+
+    return links
+
+
+def render_message_browser(messages: List[ParsedMessage], key_suffix: str, metadata: ConversationMetadata = None, subagents: list = None):
     """Render the interactive message browser"""
     with st.expander(f"💬 Messages Browser ({len(messages)} messages)", expanded=False):
         # Legend
@@ -330,11 +380,17 @@ def render_message_browser(messages: List[ParsedMessage], key_suffix: str):
             # Build tool call mappings
             tool_id_to_call, tool_id_to_result = build_tool_call_mapping(messages)
 
+            # Build subagent links
+            subagent_links = {}
+            if metadata and subagents:
+                subagent_links = build_subagent_links(messages, subagents, metadata.project_name)
+
             # Render messages
             for original_idx, msg in filtered_messages_with_idx[start_idx:end_idx]:
                 render_single_message(
                     msg, original_idx, messages,
-                    tool_id_to_call, tool_id_to_result
+                    tool_id_to_call, tool_id_to_result,
+                    subagent_link=subagent_links.get(original_idx)
                 )
 
 
@@ -343,7 +399,8 @@ def render_single_message(
     original_idx: int,
     all_messages: List[ParsedMessage],
     tool_id_to_call: dict,
-    tool_id_to_result: dict
+    tool_id_to_result: dict,
+    subagent_link: str = None,
 ):
     """Render a single message with all its details"""
     from cc_session_search.dashboard_utils import get_message_type, MESSAGE_TYPE_INFO
@@ -436,6 +493,10 @@ def render_single_message(
         unsafe_allow_html=True
     )
 
+    # Show subagent session link if available
+    if subagent_link:
+        st.markdown(f"[View Subagent Session]({subagent_link})")
+
     # Display message content
     is_thinking = msg_type == 'assistant_thinking'
     is_tool_call = msg_type in ('basic_tool_call', 'mcp_list', 'mcp_read', 'mcp_tool', 'skill_execute', 'skill_read', 'subagent_call')
@@ -510,8 +571,10 @@ def render_message_content(msg: ParsedMessage, is_thinking: bool, is_tool_call: 
             st.markdown(f'<div style="padding: 10px;">{msg.content}</div>', unsafe_allow_html=True)
 
 
-def render_visualizations(messages: List[ParsedMessage], metadata: ConversationMetadata):
+def render_visualizations(messages: List[ParsedMessage], metadata: ConversationMetadata, subagent_messages: List[ParsedMessage] = None):
     """Render visualization section"""
+    combined = messages + (subagent_messages or [])
+
     with st.expander(f"📈 Visualizations", expanded=True):
         tab1, tab2, tab3, tab4, tab5 = st.tabs(["Conversation Flow", "Tool Usage", "Timeline", "Token Burn-up", "Token Breakdown"])
 
@@ -520,7 +583,7 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
             st.plotly_chart(fig, width='stretch')
 
         with tab2:
-            fig = create_tool_usage_chart(messages)
+            fig = create_tool_usage_chart(combined)
             st.plotly_chart(fig, width='stretch')
 
         with tab3:
@@ -567,7 +630,7 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                     st.caption(f"Avg: ${avg_cost:.4f}/msg")
 
         with tab5:
-            breakdown = compute_token_breakdown(messages)
+            breakdown = compute_token_breakdown(combined)
 
             if breakdown.categories:
                 st.metric("Total Characters", f"{breakdown.total.total_tokens:.0f}")
@@ -627,12 +690,14 @@ def render_visualizations(messages: List[ParsedMessage], metadata: ConversationM
                 st.info("No token data available for breakdown")
 
 
-def render_copy_section(metadata: ConversationMetadata, messages: List[ParsedMessage]):
+def render_copy_section(metadata: ConversationMetadata, messages: List[ParsedMessage], subagent_messages: List[ParsedMessage] = None):
     """Render a top section with copyable values for Excel"""
+    combined = messages + (subagent_messages or [])
+
     # Compute metrics
-    total_tokens = sum(msg.token_count for msg in messages)
+    total_tokens = sum(msg.token_count for msg in combined)
     total_messages = len(messages)
-    tool_stats = get_tool_usage_stats(messages)
+    tool_stats = get_tool_usage_stats(combined)
     total_tool_calls = tool_stats['total_calls']
 
     duration_seconds = 0
@@ -645,7 +710,7 @@ def render_copy_section(metadata: ConversationMetadata, messages: List[ParsedMes
     tool_counts.append(str(total_tool_calls))
 
     # Character breakdown
-    breakdown = compute_token_breakdown(messages)
+    breakdown = compute_token_breakdown(combined)
     preferred_char_order = ['thinking', 'Read', 'Edit', 'Bash', 'Skill', 'Grep', 'Glob', 'text']
     char_counts = [f"{breakdown.categories.get(pref, CategoryTokens()).total_tokens:.0f}" for pref in preferred_char_order]
     char_counts.append(f"{breakdown.total.total_tokens:.0f}")
@@ -673,11 +738,18 @@ def render_copy_section(metadata: ConversationMetadata, messages: List[ParsedMes
         st.code("\t".join(values), language=None)
 
 
-def render_conversation_view(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str):
+def render_conversation_view(
+    metadata: ConversationMetadata,
+    messages: List[ParsedMessage],
+    key_suffix: str,
+    subagent_messages: List[ParsedMessage] = None,
+    subagents: list = None,
+    aggregate_metrics: dict = None,
+):
     """Main function to render complete conversation view"""
-    render_copy_section(metadata, messages)
-    render_metadata_section(metadata, messages, key_suffix)
-    render_tool_usage_section(messages)
+    render_copy_section(metadata, messages, subagent_messages=subagent_messages)
+    render_metadata_section(metadata, messages, key_suffix, aggregate_metrics=aggregate_metrics)
+    render_tool_usage_section(messages, subagent_messages=subagent_messages)
     render_subagent_section(metadata, key_suffix)
-    render_message_browser(messages, key_suffix)
-    render_visualizations(messages, metadata)
+    render_message_browser(messages, key_suffix, metadata=metadata, subagents=subagents)
+    render_visualizations(messages, metadata, subagent_messages=subagent_messages)
