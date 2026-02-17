@@ -709,6 +709,25 @@ def cmd_summarize(args):
                 print(f"  • {topic}")
 
 
+def cmd_collect_experiment(args):
+    """Collect experiment metrics to CSV"""
+    from cc_session_search.experiment_collector import ExperimentCollector
+
+    use_color = args.color if hasattr(args, 'color') else True
+    collector = ExperimentCollector(args.directory, args.experiment_id)
+
+    print(colorize(f"Collecting sessions for experiment '{args.experiment_id}' from {args.directory}...",
+                    Colors.DIM, use_color))
+
+    rows = collector.collect()
+    output_path = collector.write_csv(rows, args.output)
+
+    main_count = sum(1 for r in rows if not r['is_sub_agent'])
+    sub_count = sum(1 for r in rows if r['is_sub_agent'])
+    print(colorize(f"Wrote {len(rows)} rows ({main_count} main + {sub_count} sub-agent) to {output_path}",
+                    Colors.SUCCESS, use_color))
+
+
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -832,6 +851,14 @@ Examples:
                                   default='journal')
     add_common_args(summarize_parser)
 
+    # collect-experiment command
+    collect_parser = subparsers.add_parser('collect-experiment',
+                                           help='Collect experiment metrics to CSV')
+    collect_parser.add_argument('directory', help='Path to directory with session JSONL files')
+    collect_parser.add_argument('experiment_id', help='Experiment ID to filter by (e.g. 2026-02-01--6)')
+    collect_parser.add_argument('--output', '-o', help='Output CSV path (default: <experiment-id>--summary.csv)')
+    add_common_args(collect_parser)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -866,6 +893,8 @@ Examples:
             cmd_search(args)
         elif args.command == 'summarize':
             cmd_summarize(args)
+        elif args.command == 'collect-experiment':
+            cmd_collect_experiment(args)
     except ValueError as e:
         print(colorize(f"✗ {str(e)}", Colors.ERROR, args.color if hasattr(args, 'color') else True), file=sys.stderr)
         sys.exit(1)
