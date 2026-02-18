@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 from collections import defaultdict
 
+from cc_bench_schema.summary import SUMMARY_COLUMNS
 from cc_session_search.core.conversation_parser import JSONLParser, ParsedMessage, ConversationMetadata
 from cc_session_search.token_breakdown import classify_message, _build_tool_call_lookup
 
@@ -19,17 +20,6 @@ logger = logging.getLogger(__name__)
 
 # Tools we track individually
 TRACKED_TOOLS = ['Read', 'Glob', 'Edit', 'Skill', 'Bash', 'Grep']
-
-CSV_COLUMNS = [
-    'experiment_id', 'run_id', 'iteration_id', 'session_id',
-    'is_sub_agent', 'sub_agent_type',
-    'total_tool_calls', 'read_calls', 'glob_calls', 'edit_calls',
-    'skill_calls', 'bash_calls', 'grep_calls',
-    'total_chars', 'thinking_chars', 'read_chars', 'edit_chars',
-    'bash_chars', 'skill_chars',
-    'total_tokens', 'num_messages', 'cost_usd', 'duration_seconds',
-    'started_at', 'ended_at',
-]
 
 
 def _parse_branch(branch: str, experiment_id: str) -> Optional[Dict[str, str]]:
@@ -216,7 +206,7 @@ class ExperimentCollector:
             output_path = f"{self.experiment_id}--summary.csv"
 
         with open(output_path, 'w', newline='') as f:
-            writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+            writer = csv.DictWriter(f, fieldnames=SUMMARY_COLUMNS)
             writer.writeheader()
             writer.writerows(rows)
 

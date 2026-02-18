@@ -68,10 +68,16 @@ wheels = [
 ]
 
 [[package]]
+name = "cc-bench-schema"
+version = "0.1.0"
+source = { editable = "../cc-bench-schema" }
+
+[[package]]
 name = "cc-session-search"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cc-bench-schema" },
     { name = "mcp" },
     { name = "plotly" },
     { name = "streamlit" },
@@ -84,6 +90,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cc-bench-schema", editable = "../cc-bench-schema" },
     { name = "mcp", specifier = ">=1.2.0" },
     { name = "plotly", specifier = ">=5.17.0" },
     { name = "streamlit", specifier = ">=1.28.0" },
