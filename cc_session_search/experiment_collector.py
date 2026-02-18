@@ -28,6 +28,7 @@ CSV_COLUMNS = [
     'total_chars', 'thinking_chars', 'read_chars', 'edit_chars',
     'bash_chars', 'skill_chars',
     'total_tokens', 'num_messages', 'cost_usd', 'duration_seconds',
+    'started_at', 'ended_at',
 ]
 
 
@@ -162,6 +163,8 @@ def _compute_session_row(
         'num_messages': num_messages,
         'cost_usd': round(cost_usd, 6),
         'duration_seconds': round(duration_seconds, 1),
+        'started_at': metadata.started_at.isoformat() if metadata.started_at else '',
+        'ended_at': metadata.ended_at.isoformat() if metadata.ended_at else '',
     }
 
 
