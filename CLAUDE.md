@@ -17,7 +17,7 @@ uv sync
 ### Running the MCP Server
 ```bash
 # Start the MCP server (for integration with Claude Code)
-uv run python cc_session_search/server.py
+uv run python cc_session_explorer/server.py
 ```
 
 ### Running the CLI Tool
@@ -35,7 +35,7 @@ uv run ccsearch summarize-daily 2025-11-18
 ### Running the Streamlit Dashboard
 ```bash
 # Start the interactive web dashboard
-uv run streamlit run cc_session_search/dashboard.py
+uv run streamlit run cc_session_explorer/dashboard.py
 
 # The dashboard will open in your browser at http://localhost:8501
 ```
@@ -72,7 +72,7 @@ uv run streamlit run cc_session_search/dashboard.py
 
 ### Core Components
 
-**cc_session_search/core/**
+**cc_session_explorer/core/**
 - `conversation_parser.py`: JSONL parser for Claude Code conversation files
   - `JSONLParser`: Main parser class that handles JSONL conversation files
   - `ParsedMessage`: Dataclass representing a parsed message with role, content, timestamp, tool usage, token count, and cost
@@ -101,17 +101,17 @@ uv run streamlit run cc_session_search/dashboard.py
   - `SearchResult`: Search result with context
   - `ConversationSummary`: Summarized conversation view
 
-**cc_session_search/server.py**
+**cc_session_explorer/server.py**
 - MCP server implementation using the low-level MCP Server class
 - Exposes 8 tools for Claude Code integration
 - All tools return JSON responses via `types.TextContent`
 
-**cc_session_search/cli.py**
+**cc_session_explorer/cli.py**
 - Standalone CLI tool with multiple output formats (pretty, json, compact, table)
 - Mirrors MCP server functionality for direct command-line usage
 - Entry point defined in pyproject.toml as `ccsearch` command
 
-**cc_session_search/dashboard.py**
+**cc_session_explorer/dashboard.py**
 - Interactive Streamlit web dashboard for conversation analysis
 - Provides single session view and side-by-side comparison mode
 - Integrates all visualization components
@@ -122,7 +122,7 @@ uv run streamlit run cc_session_search/dashboard.py
 - Token counting and cost calculation for each message and conversation
 - Displays input/output tokens, total cost, and average cost per message
 
-**cc_session_search/graph_visualizer.py**
+**cc_session_explorer/graph_visualizer.py**
 - Conversation graph visualization using Plotly
 - `create_plotly_graph()`: Interactive conversation flow visualization with role-based node coloring
 - `create_tool_usage_chart()`: Bar chart of tool usage distribution

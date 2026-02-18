@@ -139,7 +139,7 @@ Use `--no-color` to disable colors for scripting.
 Launch the interactive dashboard:
 
 ```bash
-uv run streamlit run cc_session_search/dashboard.py
+uv run streamlit run cc_session_explorer/dashboard.py
 ```
 
 The dashboard will open in your browser at `http://localhost:8501`.
@@ -164,7 +164,7 @@ See [DASHBOARD_FEATURES.md](DASHBOARD_FEATURES.md) for detailed documentation.
 Run the server:
 
 ```bash
-uv run python cc_session_search/server.py
+uv run python cc_session_explorer/server.py
 ```
 
 Add to Claude Code MCP config (`~/.config/claude/mcp.json`):
@@ -172,9 +172,9 @@ Add to Claude Code MCP config (`~/.config/claude/mcp.json`):
 ```json
 {
   "servers": {
-    "cc-session-search": {
+    "cc-session-explorer": {
       "command": ["uv", "run", "python", "server.py"],
-      "cwd": "/path/to/cc-session-search"
+      "cwd": "/path/to/cc-session-explorer"
     }
   }
 }

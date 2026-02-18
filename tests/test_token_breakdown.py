@@ -3,8 +3,8 @@
 import pytest
 from datetime import datetime, timezone
 
-from cc_session_search.core.conversation_parser import ParsedMessage
-from cc_session_search.token_breakdown import (
+from cc_session_explorer.core.conversation_parser import ParsedMessage
+from cc_session_explorer.token_breakdown import (
     CategoryTokens,
     TokenBreakdown,
     classify_message,

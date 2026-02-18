@@ -1,5 +1,5 @@
 [project]
-name = "cc-session-search"
+name = "cc-session-explorer"
 version = "0.1.0"
 description = "Search and analyze Claude Code conversation history"
 requires-python = ">=3.13"
@@ -14,7 +14,7 @@ dependencies = [
 cc-bench-schema = { path = "../cc-bench-schema", editable = true }
 
 [project.scripts]
-ccsearch = "cc_session_search.cli:main"
+ccsearch = "cc_session_explorer.cli:main"
 
 [tool.uv]
 package = true

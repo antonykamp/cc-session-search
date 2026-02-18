@@ -5,12 +5,12 @@ Comparison view component for side-by-side session analysis
 import streamlit as st
 from typing import List
 
-from cc_session_search.core.conversation_parser import ParsedMessage, ConversationMetadata
-from cc_session_search.dashboard_utils import (
+from cc_session_explorer.core.conversation_parser import ParsedMessage, ConversationMetadata
+from cc_session_explorer.dashboard_utils import (
     extract_system_messages,
     get_tool_usage_stats
 )
-from cc_session_search.graph_visualizer import create_comparison_chart
+from cc_session_explorer.graph_visualizer import create_comparison_chart
 
 
 def render_stats_comparison(messages1: List[ParsedMessage], messages2: List[ParsedMessage]):

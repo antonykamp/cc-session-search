@@ -4,7 +4,7 @@ import json
 import tempfile
 from pathlib import Path
 
-from cc_session_search.core.conversation_parser import (
+from cc_session_explorer.core.conversation_parser import (
     JSONLParser,
     CLAUDE_PRICING,
     CACHE_WRITE_5M_MULTIPLIER,

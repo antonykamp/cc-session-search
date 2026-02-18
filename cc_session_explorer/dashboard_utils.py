@@ -7,7 +7,7 @@ Shared helper functions for the dashboard components.
 from typing import List, Dict, Any
 from collections import Counter
 
-from cc_session_search.core.conversation_parser import ParsedMessage
+from cc_session_explorer.core.conversation_parser import ParsedMessage
 
 
 def extract_tool_calls(messages: List[ParsedMessage]) -> List[Dict[str, Any]]:

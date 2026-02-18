@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Any
 from collections import defaultdict
 
 from cc_bench_schema.summary import SUMMARY_COLUMNS
-from cc_session_search.core.conversation_parser import JSONLParser, ParsedMessage, ConversationMetadata
-from cc_session_search.token_breakdown import classify_message, _build_tool_call_lookup
+from cc_session_explorer.core.conversation_parser import JSONLParser, ParsedMessage, ConversationMetadata
+from cc_session_explorer.token_breakdown import classify_message, _build_tool_call_lookup
 
 logger = logging.getLogger(__name__)
 

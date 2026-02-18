@@ -17,11 +17,11 @@ from mcp.server.lowlevel import Server
 import mcp.server.stdio
 
 # Local imports
-from cc_session_search.core.searcher import SessionSearcher
-from cc_session_search.core.summarizer import ConversationSummarizer
+from cc_session_explorer.core.searcher import SessionSearcher
+from cc_session_explorer.core.summarizer import ConversationSummarizer
 
 # Initialize server
-app = Server("cc-session-search")
+app = Server("cc-session-explorer")
 
 # Initialize components
 searcher = SessionSearcher()

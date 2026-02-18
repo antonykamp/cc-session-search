@@ -5,7 +5,7 @@ Session selector component for the dashboard
 import streamlit as st
 from typing import Optional, Tuple
 
-from cc_session_search.core.searcher import SessionSearcher
+from cc_session_explorer.core.searcher import SessionSearcher
 
 
 def render_session_selector(searcher: SessionSearcher, key_suffix: str) -> Optional[Tuple[str, str]]:

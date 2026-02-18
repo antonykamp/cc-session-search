@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Tuple
 import plotly.graph_objects as go
 from collections import defaultdict
 
-from cc_session_search.core.conversation_parser import ParsedMessage
+from cc_session_explorer.core.conversation_parser import ParsedMessage
 
 
 def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
@@ -17,7 +17,7 @@ def build_conversation_graph(messages: List[ParsedMessage]) -> Dict[str, Any]:
 
     Returns a dictionary with nodes and edges suitable for visualization.
     """
-    from cc_session_search.dashboard_utils import get_message_type
+    from cc_session_explorer.dashboard_utils import get_message_type
 
     nodes = []
     edges = []
@@ -198,7 +198,7 @@ def create_plotly_graph(messages: List[ParsedMessage], title: str = "Conversatio
     )
 
     # Import color mapping
-    from cc_session_search.dashboard_utils import MESSAGE_TYPE_INFO, MESSAGE_TYPE_LABELS
+    from cc_session_explorer.dashboard_utils import MESSAGE_TYPE_INFO, MESSAGE_TYPE_LABELS
 
     # Create node traces (one per display type for coloring)
     node_traces = []

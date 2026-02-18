@@ -13,7 +13,7 @@ class SessionSearcher:
 
     def __init__(self):
         # Use local conversation parser
-        from cc_session_search.core.conversation_parser import JSONLParser
+        from cc_session_explorer.core.conversation_parser import JSONLParser
         self.parser = JSONLParser()
 
         self.claude_dir = Path.home() / '.claude' / 'projects'

@@ -8,11 +8,11 @@ Interactive Streamlit dashboard for analyzing and comparing Claude Code conversa
 import streamlit as st
 from typing import Tuple
 
-from cc_session_search.core.conversation_parser import JSONLParser, ParsedMessage, ConversationMetadata
-from cc_session_search.core.searcher import SessionSearcher
-from cc_session_search.session_selector import render_session_selector
-from cc_session_search.conversation_view import render_conversation_view
-from cc_session_search.comparison_view import render_comparison_view
+from cc_session_explorer.core.conversation_parser import JSONLParser, ParsedMessage, ConversationMetadata
+from cc_session_explorer.core.searcher import SessionSearcher
+from cc_session_explorer.session_selector import render_session_selector
+from cc_session_explorer.conversation_view import render_conversation_view
+from cc_session_explorer.comparison_view import render_comparison_view
 
 
 # Page configuration

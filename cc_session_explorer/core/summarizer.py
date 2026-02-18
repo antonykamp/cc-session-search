@@ -6,8 +6,8 @@ import subprocess
 import tempfile
 from typing import Dict, Any, Optional
 
-from cc_session_search.core.models import ConversationSummary
-from cc_session_search.core.searcher import SessionSearcher
+from cc_session_explorer.core.models import ConversationSummary
+from cc_session_explorer.core.searcher import SessionSearcher
 
 
 class ConversationSummarizer:

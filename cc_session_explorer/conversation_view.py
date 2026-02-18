@@ -6,8 +6,8 @@ import streamlit as st
 import json
 from typing import List
 
-from cc_session_search.core.conversation_parser import ParsedMessage, ConversationMetadata
-from cc_session_search.dashboard_utils import (
+from cc_session_explorer.core.conversation_parser import ParsedMessage, ConversationMetadata
+from cc_session_explorer.dashboard_utils import (
     extract_tool_calls,
     get_tool_usage_stats,
     get_message_type,
@@ -16,19 +16,19 @@ from cc_session_search.dashboard_utils import (
     MESSAGE_TYPE_INFO,
     MESSAGE_TYPE_LABELS
 )
-from cc_session_search.graph_visualizer import (
+from cc_session_explorer.graph_visualizer import (
     create_plotly_graph,
     create_tool_usage_chart,
     create_message_timeline,
     create_token_burnup_chart,
     create_token_breakdown_chart
 )
-from cc_session_search.token_breakdown import compute_token_breakdown, CategoryTokens
+from cc_session_explorer.token_breakdown import compute_token_breakdown, CategoryTokens
 
 
 def render_subagent_section(metadata: ConversationMetadata, key_suffix: str):
     """Render subagent information section if this is a parent or subagent session"""
-    from cc_session_search.core.searcher import SessionSearcher
+    from cc_session_explorer.core.searcher import SessionSearcher
 
     # Display parent link if this is a subagent
     if metadata.is_subagent:
@@ -77,7 +77,7 @@ def render_subagent_section(metadata: ConversationMetadata, key_suffix: str):
 
 def render_metadata_section(metadata: ConversationMetadata, messages: List[ParsedMessage], key_suffix: str, aggregate_metrics: dict = None):
     """Render session metadata section"""
-    from cc_session_search.core.searcher import SessionSearcher
+    from cc_session_explorer.core.searcher import SessionSearcher
 
     with st.expander(f"📊 Session Metadata", expanded=True):
         # Calculate message and token statistics for this session
@@ -403,7 +403,7 @@ def render_single_message(
     subagent_link: str = None,
 ):
     """Render a single message with all its details"""
-    from cc_session_search.dashboard_utils import get_message_type, MESSAGE_TYPE_INFO
+    from cc_session_explorer.dashboard_utils import get_message_type, MESSAGE_TYPE_INFO
 
     timestamp_str = msg.timestamp.strftime('%H:%M:%S') if msg.timestamp else 'N/A'
 

@@ -12,9 +12,9 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import argparse
 
-from cc_session_search.core.searcher import SessionSearcher
-from cc_session_search.core.summarizer import ConversationSummarizer
-from cc_session_search.token_breakdown import compute_token_breakdown
+from cc_session_explorer.core.searcher import SessionSearcher
+from cc_session_explorer.core.summarizer import ConversationSummarizer
+from cc_session_explorer.token_breakdown import compute_token_breakdown
 
 
 # ANSI color codes
@@ -711,7 +711,7 @@ def cmd_summarize(args):
 
 def cmd_collect_experiment(args):
     """Collect experiment metrics to CSV"""
-    from cc_session_search.experiment_collector import ExperimentCollector
+    from cc_session_explorer.experiment_collector import ExperimentCollector
 
     use_color = args.color if hasattr(args, 'color') else True
     collector = ExperimentCollector(args.directory, args.experiment_id)

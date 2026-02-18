@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 from collections import defaultdict
 
-from cc_session_search.core.conversation_parser import ParsedMessage
+from cc_session_explorer.core.conversation_parser import ParsedMessage
 
 
 @dataclass
