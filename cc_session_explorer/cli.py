@@ -352,20 +352,6 @@ def cmd_sessions(args):
 
     sessions = searcher.get_recent_sessions(days_back=days_back, project_filter=args.project)
 
-    # Apply filters
-    if args.has_errors:
-        # TODO: implement error detection
-        pass
-
-    if args.min_cost:
-        # TODO: filter by cost
-        pass
-
-    # Sort
-    if args.sort_by == 'cost':
-        # TODO: sort by cost
-        pass
-
     # Output
     if args.format == 'oneline':
         for session in sessions:
@@ -790,9 +776,6 @@ Examples:
     sessions_parser = subparsers.add_parser('sessions', help='List sessions')
     sessions_parser.add_argument('--today', action='store_true', help='Show only today')
     sessions_parser.add_argument('--days', type=int, help='Days back to search')
-    sessions_parser.add_argument('--has-errors', action='store_true', help='Only sessions with errors')
-    sessions_parser.add_argument('--min-cost', type=float, help='Minimum cost threshold')
-    sessions_parser.add_argument('--sort-by', choices=['time', 'cost'], default='time')
     sessions_parser.add_argument('--format', choices=['table', 'oneline', 'json'], default='table')
     add_common_args(sessions_parser)
 

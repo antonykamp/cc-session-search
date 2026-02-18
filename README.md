@@ -1,6 +1,6 @@
 # Claude Code Session Search
 
-A comprehensive tool for searching and analyzing Claude Code conversation history. Available as an MCP server, CLI tool, and interactive Streamlit dashboard.
+A comprehensive tool for searching and analyzing Claude Code conversation history. Available as a CLI tool and interactive Streamlit dashboard.
 
 ## Features
 
@@ -12,8 +12,6 @@ A comprehensive tool for searching and analyzing Claude Code conversation histor
 - **Tool Analysis**: Analyze tool usage patterns and statistics
 - **Search**: Search across conversations with context windows
 - **AI Summarization**: Generate intelligent summaries of conversations
-- **MCP Server**: Integration with Claude Code via MCP protocol
-
 ### Interactive Dashboard
 - **Visual Session Browser**: Interactive Streamlit dashboard for exploring sessions
 - **Conversation Flow Graphs**: Sequence diagram visualizations with color-coded message types
@@ -159,27 +157,6 @@ The dashboard supports URL parameters for direct linking:
 
 See [DASHBOARD_FEATURES.md](DASHBOARD_FEATURES.md) for detailed documentation.
 
-### MCP Server
-
-Run the server:
-
-```bash
-uv run python cc_session_explorer/server.py
-```
-
-Add to Claude Code MCP config (`~/.config/claude/mcp.json`):
-
-```json
-{
-  "servers": {
-    "cc-session-explorer": {
-      "command": ["uv", "run", "python", "server.py"],
-      "cwd": "/path/to/cc-session-explorer"
-    }
-  }
-}
-```
-
 ## CLI Examples
 
 ### Common Debugging Workflows
@@ -244,49 +221,6 @@ ccsearch search "how do I" --role user
 
 - Standard Claude Code installation (searches `~/.claude/projects/`)
 - Python 3.13+
-- MCP 1.2.0+ (for server functionality)
-
-## MCP Server Tools
-
-The server provides the following tools:
-
-### list_projects()
-
-Lists all Claude Code projects with session counts and recent activity.
-
-### list_sessions(project_name, days_back=7)
-
-Lists sessions for a specific project within the specified time range.
-
-### list_recent_sessions(days_back=1, project_filter=None)
-
-Lists recent sessions across all projects.
-
-### analyze_sessions(days_back=1, role_filter="both", include_tools=False, project_filter=None)
-
-Extracts and analyzes messages from sessions with filtering options.
-
-### search_conversations(query, days_back=2, context_window=1, case_sensitive=False, project_filter=None)
-
-Searches conversations for specific terms with context windows.
-
-### get_message_details(session_id, message_indices)
-
-Retrieves full content for specific messages by session ID and indices.
-
-## Development
-
-The server is built using the official MCP Python SDK with low-level Server class for maximum control.
-
-Key features:
-
-- Efficient response handling with content truncation
-- Metadata-first approach to minimize token usage
-- Support for date ranges and filtering
-- Cross-project search capabilities
-- Session shortcuts for fast debugging
-- Color-coded terminal output
-- Cost and token tracking
 
 ## License
 

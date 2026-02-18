@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Python-based tool for searching and analyzing Claude Code conversation history. It provides both an MCP server for integration with Claude Code and a standalone CLI tool. The project reads JSONL conversation files from `~/.claude/projects/` and provides search, analysis, and AI-powered summarization capabilities.
+This is a Python-based tool for searching and analyzing Claude Code conversation history. It provides a standalone CLI tool and an interactive Streamlit dashboard. The project reads JSONL conversation files from `~/.claude/projects/` and provides search, analysis, and AI-powered summarization capabilities.
 
 ## Development Commands
 
@@ -12,12 +12,6 @@ This is a Python-based tool for searching and analyzing Claude Code conversation
 ```bash
 # Install dependencies using uv
 uv sync
-```
-
-### Running the MCP Server
-```bash
-# Start the MCP server (for integration with Claude Code)
-uv run python cc_session_explorer/server.py
 ```
 
 ### Running the CLI Tool
@@ -97,14 +91,7 @@ uv run streamlit run cc_session_explorer/dashboard.py
   - Can summarize by specific date or time range
 
 - `models.py`: Data models used across the codebase
-  - `Message`: Represents a conversation message
-  - `SearchResult`: Search result with context
   - `ConversationSummary`: Summarized conversation view
-
-**cc_session_explorer/server.py**
-- MCP server implementation using the low-level MCP Server class
-- Exposes 8 tools for Claude Code integration
-- All tools return JSON responses via `types.TextContent`
 
 **cc_session_explorer/cli.py**
 - Standalone CLI tool with multiple output formats (pretty, json, compact, table)
@@ -175,7 +162,6 @@ uv run pytest
 ## Dependencies
 
 - Python 3.13+ (specified in .python-version)
-- MCP SDK 1.2.0+ for server functionality
 - Streamlit 1.28.0+ for interactive dashboard
 - Plotly 5.17.0+ for interactive visualizations
 - `uv` package manager for dependency management
