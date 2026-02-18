@@ -168,7 +168,9 @@ uv run streamlit run cc_session_search/dashboard.py
 
 ## Testing
 
-No formal test suite currently exists. Manual testing is done via CLI commands.
+```bash
+uv run pytest
+```
 
 ## Dependencies
 
@@ -176,7 +178,6 @@ No formal test suite currently exists. Manual testing is done via CLI commands.
 - MCP SDK 1.2.0+ for server functionality
 - Streamlit 1.28.0+ for interactive dashboard
 - Plotly 5.17.0+ for interactive visualizations
-- Pandas 2.1.0+ for data manipulation
 - `uv` package manager for dependency management
 
 Note: Token counting uses actual API usage data from conversation files, not estimation libraries.

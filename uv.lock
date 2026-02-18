@@ -73,7 +73,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "mcp" },
-    { name = "pandas" },
     { name = "plotly" },
     { name = "streamlit" },
 ]
@@ -86,7 +85,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mcp", specifier = ">=1.2.0" },
-    { name = "pandas", specifier = ">=2.1.0" },
     { name = "plotly", specifier = ">=5.17.0" },
     { name = "streamlit", specifier = ">=1.28.0" },
 ]
