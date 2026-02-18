@@ -39,7 +39,7 @@ def _parse_branch(branch: str, experiment_id: str) -> Optional[Dict[str, str]]:
 
     Returns dict with run_id and iteration_id, or None if no match.
     """
-    pattern = rf'^{re.escape(experiment_id)}-run-(\d+)-iteration-(\d+)$'
+    pattern = rf'^{re.escape(experiment_id)}--run-(\d+)--iteration-(\d+)$'
     m = re.match(pattern, branch)
     if not m:
         return None
