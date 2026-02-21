@@ -13,7 +13,8 @@ dependencies = [
 cc-bench-schema = { path = "../cc-bench-schema", editable = true }
 
 [project.scripts]
-ccsearch = "cc_session_explorer.cli:main"
+cc-collect = "cc_session_explorer.cli:main"
+cc-dashboard = "cc_session_explorer.cli:run_dashboard"
 
 [tool.uv]
 package = true

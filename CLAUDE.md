@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-This is a Python-based tool for searching and analyzing Claude Code conversation history. It provides a standalone CLI tool and an interactive Streamlit dashboard. The project reads JSONL conversation files from `~/.claude/projects/` and provides search, analysis, and AI-powered summarization capabilities.
+This is a Python-based tool for analyzing Claude Code conversation history. It provides a CLI tool for experiment data collection and an interactive Streamlit dashboard. The project reads JSONL conversation files from `~/.claude/projects/` and provides analysis and visualization capabilities.
 
 ## Development Commands
 
@@ -14,24 +14,15 @@ This is a Python-based tool for searching and analyzing Claude Code conversation
 uv sync
 ```
 
-### Running the CLI Tool
+### Running the Dashboard
 ```bash
-# The CLI is accessed via the 'ccsearch' command
-uv run ccsearch <command> [options]
-
-# Examples:
-uv run ccsearch list-projects
-uv run ccsearch list-recent --days-back 3
-uv run ccsearch search "error handling" --days-back 7
-uv run ccsearch summarize-daily 2025-11-18
+uv run cc-dashboard
+# Opens in your browser at http://localhost:8501
 ```
 
-### Running the Streamlit Dashboard
+### Collecting Experiment Data
 ```bash
-# Start the interactive web dashboard
-uv run streamlit run cc_session_explorer/dashboard.py
-
-# The dashboard will open in your browser at http://localhost:8501
+uv run cc-collect <directory> <experiment-id> [--output path.csv]
 ```
 
 **Dashboard Features:**
@@ -79,24 +70,16 @@ uv run streamlit run cc_session_explorer/dashboard.py
   - Properly accounts for prompt caching costs (cache reads at 90% discount)
   - Only assistant messages have usage data; user message tokens are included in the next assistant's input_tokens
 
-- `searcher.py`: Core search and session analysis functionality
-  - `SessionSearcher`: Main search class
-  - Discovers projects by scanning `~/.claude/projects/` directory structure
-  - Provides session listing, filtering by date ranges, and cross-project search
-  - Implements conversation search with context windows and role filtering
-
-- `summarizer.py`: AI-powered conversation summarization
-  - `ConversationSummarizer`: Generates intelligent summaries using headless Claude
-  - Supports multiple summary styles: 'journal', 'insights', 'stories'
-  - Can summarize by specific date or time range
-
-- `models.py`: Data models used across the codebase
-  - `ConversationSummary`: Summarized conversation view
+- `searcher.py`: Core session discovery and retrieval functionality
+  - `SessionSearcher`: Main class for discovering projects and retrieving sessions
+  - `discover_projects()`: Scans `~/.claude/projects/` directory structure
+  - `get_sessions_for_project()`: Lists sessions for a project with date filtering
+  - `get_session_with_subagents()`: Retrieves a session with its subagents and aggregate metrics
+  - `find_subagents_for_session()`: Finds subagent sessions belonging to a parent session
 
 **cc_session_explorer/cli.py**
-- Standalone CLI tool with multiple output formats (pretty, json, compact, table)
-- Mirrors MCP server functionality for direct command-line usage
-- Entry point defined in pyproject.toml as `ccsearch` command
+- `cc-collect` entry point: CLI tool for gathering experiment metrics to CSV
+- `cc-dashboard` entry point: Launches the Streamlit dashboard
 
 **cc_session_explorer/dashboard.py**
 - Interactive Streamlit web dashboard for conversation analysis
@@ -120,7 +103,6 @@ uv run streamlit run cc_session_explorer/dashboard.py
 
 - **Project Names**: Claude Code encodes project directory paths as dash-separated names
   - Example: `/Users/name/Projects/foo` becomes `-Users-name-Projects-foo`
-  - Use `--project=-Users-...` syntax when project names start with dash
   - The `_decode_project_name()` method converts dashes back to slashes for display
 
 - **Session Files**: Stored as `conversation-{uuid}.jsonl` in project directories
@@ -149,9 +131,8 @@ uv run streamlit run cc_session_explorer/dashboard.py
 2. **Content Truncation**: Limits output to prevent token overflow (e.g., 500 char message previews)
 3. **Role Detection**: Automatically reclassifies user messages containing tool results as 'tool' role
 4. **Timestamp Inference**: Fills missing timestamps using next message's timestamp or file modification time
-5. **Max Limits**: Days back limited to 7, message indices limited to 10, context window limited to 5
-6. **API-Based Token Counting**: Uses actual usage data from Claude API responses, not estimation
-7. **Cache-Aware Pricing**: Properly calculates costs for prompt caching with 90% discount on cache reads
+5. **API-Based Token Counting**: Uses actual usage data from Claude API responses, not estimation
+6. **Cache-Aware Pricing**: Properly calculates costs for prompt caching with 90% discount on cache reads
 
 ## Testing
 
