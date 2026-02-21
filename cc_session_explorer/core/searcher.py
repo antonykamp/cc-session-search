@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from cc_session_explorer.core.conversation_parser import JSONLParser
+from cc_session_explorer.core.file_locator import SessionFileLocator
 
 
 
@@ -14,6 +15,7 @@ class SessionSearcher:
     def __init__(self):
         # Use local conversation parser
         self.parser = JSONLParser()
+        self.locator = SessionFileLocator()
 
         self.claude_dir = Path.home() / '.claude' / 'projects'
 
@@ -51,6 +53,21 @@ class SessionSearcher:
         """Decode Claude project directory names"""
         return encoded_name.replace('-', '/')
 
+    def _build_session_dict(self, conversation_metadata, session_file: Path) -> Dict[str, Any]:
+        """Build a session dictionary from parsed metadata."""
+        return {
+            'session_id': conversation_metadata.session_id,
+            'file_path': str(session_file),
+            'message_count': conversation_metadata.message_count,
+            'started_at': conversation_metadata.started_at.isoformat() if conversation_metadata.started_at else None,
+            'ended_at': conversation_metadata.ended_at.isoformat() if conversation_metadata.ended_at else None,
+            'working_directory': conversation_metadata.working_directory,
+            'git_branch': conversation_metadata.git_branch,
+            'is_subagent': conversation_metadata.is_subagent,
+            'agent_id': conversation_metadata.agent_id,
+            'agent_type': conversation_metadata.agent_type,
+        }
+
     def get_sessions_for_project(self, project_name: str, days_back: int = 7, include_subagents: bool = False) -> List[Dict[str, Any]]:
         """
         Get sessions for a specific project.
@@ -71,63 +88,36 @@ class SessionSearcher:
         sessions = []
         subagent_map = {}  # Map parent_session_id -> list of subagents
 
-        for session_file in project_dir.glob('*.jsonl'):
-            mod_time = datetime.fromtimestamp(session_file.stat().st_mtime)
+        # Discover main sessions using file locator
+        for file_info in self.locator.find_main_sessions(project_dir):
+            mod_time = datetime.fromtimestamp(file_info.path.stat().st_mtime)
             if mod_time < cutoff_time:
                 continue
 
             try:
-                # Quick parse for metadata only (no expensive token counting)
-                conversation_metadata, message_count = self.parser.parse_metadata_only(session_file)
-
-                session_dict = {
-                    'session_id': conversation_metadata.session_id,
-                    'file_path': str(session_file),
-                    'message_count': message_count,
-                    'started_at': conversation_metadata.started_at.isoformat() if conversation_metadata.started_at else None,
-                    'ended_at': conversation_metadata.ended_at.isoformat() if conversation_metadata.ended_at else None,
-                    'working_directory': conversation_metadata.working_directory,
-                    'git_branch': conversation_metadata.git_branch,
-                    'is_subagent': conversation_metadata.is_subagent,
-                    'agent_id': conversation_metadata.agent_id,
-                    'agent_type': conversation_metadata.agent_type
-                }
+                conversation_metadata, message_count = self.parser.parse_metadata_only(file_info.path)
+                session_dict = self._build_session_dict(conversation_metadata, file_info.path)
 
                 if conversation_metadata.is_subagent:
-                    # Store subagent for later nesting
                     parent_id = conversation_metadata.parent_session_id
                     if parent_id not in subagent_map:
                         subagent_map[parent_id] = []
                     subagent_map[parent_id].append(session_dict)
                 else:
-                    # Regular session
                     sessions.append(session_dict)
 
             except Exception:
-                # Skip corrupted files
                 continue
 
-        # Discover new-format subagents: {parent_id}/subagents/agent-*.jsonl
-        for session_file in project_dir.glob('*/subagents/agent-*.jsonl'):
-            mod_time = datetime.fromtimestamp(session_file.stat().st_mtime)
+        # Discover subagent files using file locator
+        for file_info in self.locator.find_subagent_files(project_dir):
+            mod_time = datetime.fromtimestamp(file_info.path.stat().st_mtime)
             if mod_time < cutoff_time:
                 continue
 
             try:
-                conversation_metadata, message_count = self.parser.parse_metadata_only(session_file)
-
-                session_dict = {
-                    'session_id': conversation_metadata.session_id,
-                    'file_path': str(session_file),
-                    'message_count': message_count,
-                    'started_at': conversation_metadata.started_at.isoformat() if conversation_metadata.started_at else None,
-                    'ended_at': conversation_metadata.ended_at.isoformat() if conversation_metadata.ended_at else None,
-                    'working_directory': conversation_metadata.working_directory,
-                    'git_branch': conversation_metadata.git_branch,
-                    'is_subagent': conversation_metadata.is_subagent,
-                    'agent_id': conversation_metadata.agent_id,
-                    'agent_type': conversation_metadata.agent_type
-                }
+                conversation_metadata, message_count = self.parser.parse_metadata_only(file_info.path)
+                session_dict = self._build_session_dict(conversation_metadata, file_info.path)
 
                 if conversation_metadata.is_subagent:
                     parent_id = conversation_metadata.parent_session_id
@@ -172,40 +162,23 @@ class SessionSearcher:
 
         subagents = []
 
-        # New format: {session_id}/subagents/agent-{id}.jsonl
-        subagent_dir = project_dir / session_id / 'subagents'
-        if subagent_dir.exists():
-            for agent_file in subagent_dir.glob('agent-*.jsonl'):
-                try:
-                    metadata, _ = self.parser.parse_metadata_only(agent_file)
+        for file_info in self.locator.find_subagent_files(project_dir, parent_id=session_id):
+            try:
+                metadata, _ = self.parser.parse_metadata_only(file_info.path)
 
-                    subagents.append({
-                        'agent_id': metadata.agent_id,
-                        'agent_type': metadata.agent_type or 'Unknown',
-                        'session_id': metadata.session_id,
-                        'file_path': str(agent_file),
-                        'message_count': metadata.message_count,
-                        'started_at': metadata.started_at.isoformat() if metadata.started_at else None,
-                        'ended_at': metadata.ended_at.isoformat() if metadata.ended_at else None
-                    })
-                except Exception:
+                # For legacy format files, verify they actually belong to this parent
+                if not file_info.parent_session_id and metadata.is_subagent and metadata.parent_session_id != session_id:
                     continue
 
-        # Legacy format: agent-*.jsonl in the project directory
-        for agent_file in project_dir.glob('agent-*.jsonl'):
-            try:
-                metadata, _ = self.parser.parse_metadata_only(agent_file)
-
-                if metadata.is_subagent and metadata.parent_session_id == session_id:
-                    subagents.append({
-                        'agent_id': metadata.agent_id,
-                        'agent_type': metadata.agent_type or 'Unknown',
-                        'session_id': metadata.session_id,
-                        'file_path': str(agent_file),
-                        'message_count': metadata.message_count,
-                        'started_at': metadata.started_at.isoformat() if metadata.started_at else None,
-                        'ended_at': metadata.ended_at.isoformat() if metadata.ended_at else None
-                    })
+                subagents.append({
+                    'agent_id': metadata.agent_id,
+                    'agent_type': metadata.agent_type or 'Unknown',
+                    'session_id': metadata.session_id,
+                    'file_path': str(file_info.path),
+                    'message_count': metadata.message_count,
+                    'started_at': metadata.started_at.isoformat() if metadata.started_at else None,
+                    'ended_at': metadata.ended_at.isoformat() if metadata.ended_at else None
+                })
             except Exception:
                 continue
 

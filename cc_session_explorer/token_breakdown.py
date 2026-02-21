@@ -11,6 +11,12 @@ from typing import Dict, List
 from collections import defaultdict
 
 from cc_session_explorer.core.conversation_parser import ParsedMessage
+from cc_session_explorer.core.models import (
+    TextBlock,
+    ThinkingBlock,
+    ToolCallBlock,
+    ToolResultBlock,
+)
 
 
 @dataclass
@@ -62,27 +68,35 @@ def classify_message(msg: ParsedMessage) -> str:
         return 'tool_result'
 
     if msg.role == 'assistant':
+        # Use typed content blocks when available
+        blocks = msg.metadata.get('blocks', [])
+        if blocks:
+            for block in blocks:
+                if isinstance(block, ThinkingBlock):
+                    return 'thinking'
+                if isinstance(block, ToolCallBlock):
+                    return block.tool_name
+            # Check tool_uses for multi-tool calls
+            if msg.tool_uses and 'tool_calls' in msg.tool_uses:
+                tool_calls = msg.tool_uses['tool_calls']
+                if tool_calls:
+                    return tool_calls[0].get('name', 'text')
+            return 'text'
+
+        # Fallback to string-based logic for backward compat
         content = msg.content
-        # Thinking blocks are wrapped with [Thinking: ...] by the parser
         if content.startswith('[Thinking:'):
             return 'thinking'
 
-        # Tool call blocks have placeholder content like [Calling tool: Read]
         if content.startswith('[Calling tool:'):
-            # Extract tool name
             tool_name = content.split(':', 1)[1].strip().rstrip(']')
             return tool_name
 
         if content.startswith('[Calling ') and 'tools:' in content:
-            # Multiple tools: [Calling 2 tools: Read, Bash]
-            # Use the first tool name as a representative, or just "multi_tool"
             tools_part = content.split('tools:', 1)[1].strip().rstrip(']')
             tool_names = [t.strip() for t in tools_part.split(',')]
-            if len(tool_names) == 1:
-                return tool_names[0]
-            return tool_names[0]  # attribute to first tool
+            return tool_names[0]
 
-        # Check tool_uses for tool call info even when content has text
         if msg.tool_uses and 'tool_calls' in msg.tool_uses:
             tool_calls = msg.tool_uses['tool_calls']
             if tool_calls:

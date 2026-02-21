@@ -14,6 +14,7 @@ from collections import defaultdict
 
 from cc_bench_schema.summary import SUMMARY_COLUMNS
 from cc_session_explorer.core.conversation_parser import JSONLParser, ParsedMessage, ConversationMetadata
+from cc_session_explorer.core.file_locator import SessionFileLocator
 from cc_session_explorer.token_breakdown import classify_message, _build_tool_call_lookup
 
 logger = logging.getLogger(__name__)
@@ -165,6 +166,7 @@ class ExperimentCollector:
         self.directory = Path(directory)
         self.experiment_id = experiment_id
         self.parser = JSONLParser()
+        self.locator = SessionFileLocator()
 
     def collect(self) -> List[Dict[str, Any]]:
         """Collect metrics for all sessions in the experiment.
@@ -215,11 +217,11 @@ class ExperimentCollector:
     def _discover_main_sessions(self) -> List[Dict[str, Any]]:
         """Find main sessions whose branch matches the experiment."""
         sessions = []
-        for jsonl_file in self.directory.glob('*.jsonl'):
+        for file_info in self.locator.find_main_sessions(self.directory):
             try:
-                metadata, _ = self.parser.parse_metadata_only(jsonl_file)
+                metadata, _ = self.parser.parse_metadata_only(file_info.path)
             except Exception:
-                logger.warning(f"Skipping unparseable file: {jsonl_file}")
+                logger.warning(f"Skipping unparseable file: {file_info.path}")
                 continue
 
             if metadata.is_subagent:
@@ -233,7 +235,7 @@ class ExperimentCollector:
                 continue
 
             sessions.append({
-                'file_path': jsonl_file,
+                'file_path': file_info.path,
                 'session_id': metadata.session_id,
                 'run_id': parsed['run_id'],
                 'iteration_id': parsed['iteration_id'],
@@ -245,19 +247,18 @@ class ExperimentCollector:
         """Find all sub-agent session files grouped by parent session ID."""
         subagent_map: Dict[str, List[Path]] = defaultdict(list)
 
-        # New format: {parent_id}/subagents/agent-*.jsonl
-        for agent_file in self.directory.glob('*/subagents/agent-*.jsonl'):
-            parent_id = agent_file.parent.parent.name
-            subagent_map[parent_id].append(agent_file)
-
-        # Legacy format: agent-*.jsonl at top level
-        for agent_file in self.directory.glob('agent-*.jsonl'):
-            try:
-                metadata, _ = self.parser.parse_metadata_only(agent_file)
-                if metadata.is_subagent and metadata.parent_session_id:
-                    subagent_map[metadata.parent_session_id].append(agent_file)
-            except Exception:
-                continue
+        for file_info in self.locator.find_subagent_files(self.directory):
+            if file_info.parent_session_id:
+                # New format: parent_id is derived from directory structure
+                subagent_map[file_info.parent_session_id].append(file_info.path)
+            else:
+                # Legacy format: need to parse to find parent
+                try:
+                    metadata, _ = self.parser.parse_metadata_only(file_info.path)
+                    if metadata.is_subagent and metadata.parent_session_id:
+                        subagent_map[metadata.parent_session_id].append(file_info.path)
+                except Exception:
+                    continue
 
         return subagent_map
 
