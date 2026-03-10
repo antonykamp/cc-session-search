@@ -12,3 +12,14 @@ wheels/
 
 # examples
 examples/
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

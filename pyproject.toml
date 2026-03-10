@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-cc-bench-schema = { path = "../cc-bench-schema", editable = true }
+cc-bench-schema = { git = "https://github.com/antonykamp/cc-bench-schema.git" }
 
 [project.scripts]
 cc-collect = "cc_session_explorer.cli:main"
